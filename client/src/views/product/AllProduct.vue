@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {onMounted, ref} from "vue"
+import {onMounted, ref, computed} from "vue"
 import { useRouter } from 'vue-router'
 import ProductCard from "../../components/ProductCard.vue"
 import { Back } from "@element-plus/icons-vue"
@@ -9,34 +9,37 @@ import { getAllAdvertisements } from "../../api/advertisements.ts"
 import { ElMessage } from "element-plus"
 import type { Product } from "../../api/products"
 import {getProductsByCategory} from "../../api/products"
+import { mockProducts, mockAdvertisements } from "../../api/mockData"
+
+const currentPage = ref(1)
+const pageSize = 10 // 每页显示15个商品
+
+const paginatedProducts = computed(() => {
+  const start = (currentPage.value - 1) * pageSize
+  const end = start + pageSize
+  return products.value.slice(start, end)
+})
+const handleCurrentChange = (page: number) => {
+  currentPage.value = page
+}
+
+
 const router = useRouter()
 const role = sessionStorage.getItem("role")
-const products = ref<Product[]>()
+//const products = ref<Product[]>([])
+const products = ref<Product[]>(mockProducts)
+
 const top3Products = ref<Product[]>([])
-const advertisements = ref<any[]>([]); // 广告列表
+const advertisements = ref<any[]>(mockAdvertisements); // 广告列表
 
-// 广告相关状态
-const showLeftAd = ref(true);
-const showRightAd = ref(true);
+// getAllProducts().then(res => {
+//    products.value = res.data.data
+// }).catch(err => {
+//   ElMessage.error('获取商品列表失败')
+//   console.error(err)
+// })
 
-const leftAd = {
-  imageUrl: new URL('../../assets/OIP.jpg', import.meta.url).href, // 左侧广告图片路径
-  linkUrl: "https://www.nju.edu.cn/ndgk/ndjj.htm", // 左侧广告跳转链接
-};
 
-const rightAd = {
-  imageUrl: new URL('../../assets/bilibili.jpg', import.meta.url).href, // 右侧广告图片路径
-  linkUrl: "https://www.bilibili.com/", // 右侧广告跳转链接
-};
-// 获取商品列表
-
-getAllProducts().then(res => {
-  products.value = res.data.data
-
-}).catch(err => {
-  ElMessage.error('获取商品列表失败')
-  console.error(err)
-})
 
 const fetchTop3Products = async () => {
   try {
@@ -53,18 +56,18 @@ const fetchTop3Products = async () => {
 }
 
 // 获取广告列表（新增部分）
-const fetchAdvertisements = async () => {
-  try {
-    const res = await getAllAdvertisements();
-    advertisements.value = res.data.data;
-  } catch (err) {
-    ElMessage.error('获取广告列表失败');
-    console.error(err);
-  }
-};
+// const fetchAdvertisements = async () => {
+//   try {
+//     const res = await getAllAdvertisements();
+//     advertisements.value = res.data.data;
+//   } catch (err) {
+//     ElMessage.error('获取广告列表失败');
+//     console.error(err);
+//   }
+// };
 
 onMounted(() => {
-  fetchAdvertisements(); // 在页面加载时获取广告数据
+  // fetchAdvertisements(); // 在页面加载时获取广告数据
   fetchTop3Products()
   performSearch() // 初始加载所有商品
 });
@@ -88,18 +91,7 @@ function toBackPage() {
 const toCartPage = () => {
   router.push("/cart");
 };
-// 关闭广告
-function closeAd(adPosition: "left" | "right") {
-  if (adPosition === "left") {
-    showLeftAd.value = false;
-  } else {
-    showRightAd.value = false;
-  }
-}
-// 跳转广告链接
-function navigateToAd(linkUrl: string) {
-  window.open(linkUrl, "_blank");
-}
+
 
 const toAllAdvertisementsPage = () => {
   router.push("/alladvertisements");
@@ -119,14 +111,20 @@ const isSearching = ref(false)
 const performSearch = async () => {
   const keyword = searchQuery.value.trim()
   if (!keyword && !selectedCategory.value) {
-    // 如果既没有搜索词也没有选择分类，加载所有商品
-    try {
-      const res = await getAllProducts()
-      products.value = res.data.data
-    } catch (err) {
-      ElMessage.error('获取商品列表失败')
-      console.error(err)
-    }
+    // // 如果既没有搜索词也没有选择分类，加载所有商品
+    // try {
+    //   const res = await getAllProducts()
+    //   products.value = res.data.data
+    //   currentPage.value = 1
+    // } catch (err) {
+    //   ElMessage.error('获取商品列表失败')
+    //   console.error(err)
+    // }
+    // return
+
+    // 重置为所有假数据
+    products.value = mockProducts
+    currentPage.value = 1
     return
   }
 
@@ -156,7 +154,6 @@ const performSearch = async () => {
   }
 }
 
-// 分类相关
 const categories = [
   '玄幻',
   '科幻'
@@ -170,27 +167,6 @@ const handleCategoryChange = async (category: string) => {
   await performSearch() // 调用统一的处理函数
 }
 
-
-const showDialog = ref(false);
-const currentMessage = ref('');
-const messages = [
-  '喵～欢迎回来！',
-  '需要帮忙找东西吗？',
-  '今天天气真好，适合逛逛哦~',
-  '有我在，请放心购物！',
-  '遇到问题了吗？告诉我吧！'
-];
-
-function showRandomMessage() {
-  const randomMsg = messages[Math.floor(Math.random() * messages.length)];
-  currentMessage.value = randomMsg;
-  showDialog.value = true;
-
-  // 自动隐藏对话框
-  setTimeout(() => {
-    showDialog.value = false;
-  }, 3000);
-}
 
 </script>
 
@@ -210,26 +186,6 @@ function showRandomMessage() {
   <el-button @click="toBackPage()" type="primary" circle plain style="margin-left: 30px;">
     <el-icon><Back /></el-icon>
   </el-button>
-
-  <!-- 左侧广告 -->
-  <div
-      v-if="showLeftAd"
-      class="ad-banner left-ad"
-      @click="navigateToAd(leftAd.linkUrl)"
-  >
-    <img :src="leftAd.imageUrl" alt="左侧广告" />
-    <button class="close-btn" @click.stop="closeAd('left')">×</button>
-  </div>
-
-  <!-- 右侧广告 -->
-  <div
-      v-if="showRightAd"
-      class="ad-banner right-ad"
-      @click="navigateToAd(rightAd.linkUrl)"
-  >
-    <img :src="rightAd.imageUrl" alt="右侧广告" />
-    <button class="close-btn" @click.stop="closeAd('right')">×</button>
-  </div>
 
   <!-- 广告轮播 -->
   <div class="ad-carousel">
@@ -278,78 +234,80 @@ function showRandomMessage() {
 
 
     <!-- 新增销量前三展示区 -->
-    <div class="top3-container">
-      <h2 class="top3-title">🏆 畅销排行榜</h2>
-    <div class="top3-horizontal">
-      <!-- 亚军 -->
-      <div v-if="top3Products[1]" class="top3-item runner-up" @click="toProductDetailPage(top3Products[1].id)">
-        <div class="top3-badge">🥈 亚军</div>
-        <div class="image-wrapper">
-          <img :src="top3Products[1].cover" alt="亚军商品" class="top3-image"/>
-        </div>
-        <div class="top3-info">
-          <h3>{{ top3Products[1].title }}</h3>
-          <p class="sales">销量: {{ top3Products[1].sales }}</p>
-        </div>
-      </div>
+<!--    <div class="top3-container">-->
+<!--      <h2 class="top3-title">🏆 畅销排行榜</h2>-->
+<!--    <div class="top3-horizontal">-->
+<!--      &lt;!&ndash; 亚军 &ndash;&gt;-->
+<!--      <div v-if="top3Products[1]" class="top3-item runner-up" @click="toProductDetailPage(top3Products[1].id)">-->
+<!--        <div class="top3-badge">🥈 亚军</div>-->
+<!--        <div class="image-wrapper">-->
+<!--          <img :src="top3Products[1].cover" alt="亚军商品" class="top3-image"/>-->
+<!--        </div>-->
+<!--        <div class="top3-info">-->
+<!--          <h3>{{ top3Products[1].title }}</h3>-->
+<!--          <p class="sales">销量: {{ top3Products[1].sales }}</p>-->
+<!--        </div>-->
+<!--      </div>-->
 
-      <!-- 冠军（现在在中间） -->
-      <div v-if="top3Products[0]" class="top3-item champion" @click="toProductDetailPage(top3Products[0].id)">
-        <div class="top3-badge">👑 冠军</div>
-        <div class="image-wrapper">
-          <img :src="top3Products[0].cover" alt="冠军商品" class="top3-image"/>
-        </div>
-        <div class="top3-info">
-          <h3>{{ top3Products[0].title}}</h3>
-          <p class="sales">销量: {{ top3Products[0].sales }}</p>
-        </div>
-      </div>
+<!--      &lt;!&ndash; 冠军（现在在中间） &ndash;&gt;-->
+<!--      <div v-if="top3Products[0]" class="top3-item champion" @click="toProductDetailPage(top3Products[0].id)">-->
+<!--        <div class="top3-badge">👑 冠军</div>-->
+<!--        <div class="image-wrapper">-->
+<!--          <img :src="top3Products[0].cover" alt="冠军商品" class="top3-image"/>-->
+<!--        </div>-->
+<!--        <div class="top3-info">-->
+<!--          <h3>{{ top3Products[0].title}}</h3>-->
+<!--          <p class="sales">销量: {{ top3Products[0].sales }}</p>-->
+<!--        </div>-->
+<!--      </div>-->
 
-      <!-- 季军 -->
-      <div v-if="top3Products[2]" class="top3-item third-place" @click="toProductDetailPage(top3Products[2].id)">
-        <div class="top3-badge">🥉 季军</div>
-        <div class="image-wrapper">
-          <img :src="top3Products[2].cover" alt="季军商品" class="top3-image"/>
-        </div>
-        <div class="top3-info">
-          <h3>{{ top3Products[2].title }}</h3>
-          <p class="sales">销量: {{ top3Products[2].sales }}</p>
-        </div>
-      </div>
-    </div>
-    </div>
+<!--      &lt;!&ndash; 季军 &ndash;&gt;-->
+<!--      <div v-if="top3Products[2]" class="top3-item third-place" @click="toProductDetailPage(top3Products[2].id)">-->
+<!--        <div class="top3-badge">🥉 季军</div>-->
+<!--        <div class="image-wrapper">-->
+<!--          <img :src="top3Products[2].cover" alt="季军商品" class="top3-image"/>-->
+<!--        </div>-->
+<!--        <div class="top3-info">-->
+<!--          <h3>{{ top3Products[2].title }}</h3>-->
+<!--          <p class="sales">销量: {{ top3Products[2].sales }}</p>-->
+<!--        </div>-->
+<!--      </div>-->
+<!--    </div>-->
+<!--    </div>-->
 
 
     <!-- 商品展示 -->
-    <div>
-      <el-scrollbar max-height="750px" always>
-        <div class="product-item-list">
-          <ProductCard
-              v-for="product in products"
-              :key="product.id"
-              :product="product"
-              @delete="handleProductDelete"
-              @click="toProductDetailPage(product.id)"
-          />
-        </div>
-      </el-scrollbar>
+    <!-- 商品展示 -->
+    <div class="product-container">
+      <div class="product-grid">
+        <ProductCard
+            v-for="product in paginatedProducts"
+            :key="product.id"
+            :product="product"
+            @delete="handleProductDelete"
+            @click="toProductDetailPage(product.id)"
+        />
+      </div>
+
+      <!-- 分页组件 -->
+      <div class="pagination-container">
+        <el-pagination
+            v-model:current-page="currentPage"
+            :page-size="pageSize"
+            :total="products.length"
+            layout="prev, pager, next, jumper, total"
+            @current-change="handleCurrentChange"
+            background
+        />
+      </div>
     </div>
 
     <!-- 悬浮购物车按钮 -->
     <div class="floating-cart-button" @click="toCartPage">
       🛒购物车
     </div>
-
-    <!-- 对话框 -->
-    <div v-if="showDialog" class="dialog-box">
-      <p>{{ currentMessage }}</p>
-    </div>
   </el-main>
 
-  <!-- 猫耳娘小助理 -->
-  <div class="assistant-container" id="assistantContainer" @click="showRandomMessage">
-    <img src="https://wanx.alicdn.com/wanx/1109712709782706/text_to_image_lite_v2/dd77fee19e9345698b0c8b5e1af047fc_0.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyMjAyNDExMjkwLnBuZz94LW9zcy1wcm9jZXNzPWltYWdlL3Jlc2l6ZSxtX2ZpeGVkLHdfMzAzLGhfNTI=,t_80,g_se,x_10,y_10/format,webp" alt="猫耳娘小助理" class="assistant-img" />
-  </div>
 </template>
 
 <style scoped>
@@ -471,14 +429,55 @@ function showRandomMessage() {
 }
 
 /* 商品展示 */
-.product-item-list {
+/* 商品展示 */
+.product-container {
   display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  align-content: start;
+  flex-direction: column;
+  align-items: center;
   gap: 20px;
-  position: relative;
-  z-index: 2;
+}
+
+.product-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr); /* 5列 */
+  grid-template-rows: repeat(2, 1fr); /* 3行 */
+  gap: 20px;
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+/* 分页样式 */
+.pagination-container {
+  display: flex;
+  justify-content: center;
+  margin-top: 30px;
+  width: 100%;
+}
+
+/* 响应式设计 */
+@media (max-width: 1200px) {
+  .product-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+@media (max-width: 992px) {
+  .product-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .product-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .product-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* 添加商品按钮 */
@@ -510,40 +509,13 @@ function showRandomMessage() {
   background-color: #1890ff;
 }
 
-/* 猫耳娘小助理 */
-.assistant-container {
-  position: fixed;
-  bottom: 150px;
-  right: 20px;
-  cursor: pointer;
-  z-index: 9999;
-}
 
-.assistant-img {
-  width: 128px;
-  border-radius: 15px;
-  animation: assistant-bounce 3s infinite;
-}
 
 @keyframes assistant-bounce {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.05); }
 }
 
-/* 对话框 */
-.dialog-box {
-  position: fixed;
-  bottom: 70px;
-  right: 20px;
-  background-color: white;
-  padding: 10px;
-  border-radius: 10px;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-  max-width: 200px;
-  text-align: center;
-  z-index: 1000;
-  animation: fadeInOut 3s forwards;
-}
 
 @keyframes fadeInOut {
   0% { opacity: 0; }
