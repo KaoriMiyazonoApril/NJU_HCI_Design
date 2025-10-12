@@ -26,18 +26,19 @@ const handleCurrentChange = (page: number) => {
 
 const router = useRouter()
 const role = sessionStorage.getItem("role")
-//const products = ref<Product[]>([])
-const products = ref<Product[]>(mockProducts)
+const products = ref<Product[]>([])
+// const products = ref<Product[]>(mockProducts)
 
 const top3Products = ref<Product[]>([])
-const advertisements = ref<any[]>(mockAdvertisements); // 广告列表
+const advertisements = ref<any[]>([]);
+// const advertisements = ref<any[]>(mockAdvertisements); // 广告列表
 
-// getAllProducts().then(res => {
-//    products.value = res.data.data
-// }).catch(err => {
-//   ElMessage.error('获取商品列表失败')
-//   console.error(err)
-// })
+getAllProducts().then(res => {
+   products.value = res.data.data
+}).catch(err => {
+  ElMessage.error('获取商品列表失败')
+  console.error(err)
+})
 
 
 
@@ -56,18 +57,18 @@ const fetchTop3Products = async () => {
 }
 
 // 获取广告列表（新增部分）
-// const fetchAdvertisements = async () => {
-//   try {
-//     const res = await getAllAdvertisements();
-//     advertisements.value = res.data.data;
-//   } catch (err) {
-//     ElMessage.error('获取广告列表失败');
-//     console.error(err);
-//   }
-// };
+const fetchAdvertisements = async () => {
+  try {
+    const res = await getAllAdvertisements();
+    advertisements.value = res.data.data;
+  } catch (err) {
+    ElMessage.error('获取广告列表失败');
+    console.error(err);
+  }
+};
 
 onMounted(() => {
-  // fetchAdvertisements(); // 在页面加载时获取广告数据
+  fetchAdvertisements(); // 在页面加载时获取广告数据
   fetchTop3Products()
   performSearch() // 初始加载所有商品
 });
@@ -111,21 +112,21 @@ const isSearching = ref(false)
 const performSearch = async () => {
   const keyword = searchQuery.value.trim()
   if (!keyword && !selectedCategory.value) {
-    // // 如果既没有搜索词也没有选择分类，加载所有商品
-    // try {
-    //   const res = await getAllProducts()
-    //   products.value = res.data.data
-    //   currentPage.value = 1
-    // } catch (err) {
-    //   ElMessage.error('获取商品列表失败')
-    //   console.error(err)
-    // }
-    // return
+    // 如果既没有搜索词也没有选择分类，加载所有商品
+    try {
+      const res = await getAllProducts()
+      products.value = res.data.data
+      currentPage.value = 1
+    } catch (err) {
+      ElMessage.error('获取商品列表失败')
+      console.error(err)
+    }
+    return
 
     // 重置为所有假数据
-    products.value = mockProducts
-    currentPage.value = 1
-    return
+    // products.value = mockProducts
+    // currentPage.value = 1
+    // return
   }
 
   isSearching.value = true
