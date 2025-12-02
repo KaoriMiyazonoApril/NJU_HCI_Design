@@ -1,736 +1,866 @@
 <script setup lang="ts">
-import {onMounted, ref, computed} from "vue"
+import { onMounted, ref, computed, watch } from "vue"
 import { useRouter } from 'vue-router'
 import ProductCard from "../../components/ProductCard.vue"
-import { Back } from "@element-plus/icons-vue"
+import { Back, Search as SearchIcon, Plus, User, SwitchButton } from "@element-plus/icons-vue"
 import { getAllProducts } from "../../api/products"
 import productApi from "../../api/products"
 import { getAllAdvertisements } from "../../api/advertisements.ts"
-import { ElMessage } from "element-plus"
+import { ElMessage, ElMessageBox } from "element-plus"
+import { parseRole } from "../../utils"
 import type { Product } from "../../api/products"
-import {getProductsByCategory} from "../../api/products"
-import { mockProducts, mockAdvertisements } from "../../api/mockData"
+import { getProductsByCategory } from "../../api/products"
 
+// ============ 分页数据 ============
 const currentPage = ref(1)
-const pageSize = 10 // 每页显示15个商品
+const pageSize = 12
 
 const paginatedProducts = computed(() => {
   const start = (currentPage.value - 1) * pageSize
   const end = start + pageSize
   return products.value.slice(start, end)
 })
-const handleCurrentChange = (page: number) => {
-  currentPage.value = page
-}
 
-
+// ============ 页面数据 ============
 const router = useRouter()
 const role = sessionStorage.getItem("role")
+const username = sessionStorage.getItem("username")
 const products = ref<Product[]>([])
-// const products = ref<Product[]>(mockProducts)
+const advertisements = ref<any[]>([])
+const isLoading = ref(false)
 
-const top3Products = ref<Product[]>([])
-const advertisements = ref<any[]>([]);
-// const advertisements = ref<any[]>(mockAdvertisements); // 广告列表
+// ============ 用户操作 ============
+const navigateToDashboard = () => {
+  router.push({path: "/home/dashboard/" + username})
+}
 
-getAllProducts().then(res => {
-   products.value = res.data.data
-}).catch(err => {
-  ElMessage.error('获取商品列表失败')
-  console.error(err)
+const logout = () => {
+  ElMessageBox.confirm(
+      '是否要退出登录？',
+      '提示',
+      {
+        confirmButtonText: '是',
+        cancelButtonText: '否',
+        type: "warning",
+        showClose: false,
+        roundButton: true,
+        center: true
+      }
+  ).then(() => {
+    sessionStorage.setItem('token', '')
+    router.push({path: "/login"})
+  })
+}
+
+// ============ 搜索和筛选 ============
+const searchQuery = ref('')
+const selectedCategory = ref('')
+const categories = [
+  '玄幻', '科幻', '奇幻', '冒险', '都市言情',
+  '科普', '军事', '哲学', '物理', '生物',
+  '化学', '文学', '悬疑', '恐怖', '儿童'
+]
+
+// 防抖搜索计时器
+let searchTimeout: ReturnType<typeof setTimeout> | null = null
+
+// 监听搜索框变化，实时搜索
+watch(searchQuery, async (newQuery) => {
+  // 清除之前的计时器
+  if (searchTimeout) {
+    clearTimeout(searchTimeout)
+  }
+  // 设置新的防抖计时器，延迟300ms执行搜索
+  searchTimeout = setTimeout(async () => {
+    // 如果搜索和分类都为空，显示所有商品
+    if (!newQuery.trim() && !selectedCategory.value) {
+      await fetchAllData()
+    } else {
+      // 否则执行搜索
+      await performSearch()
+    }
+  }, 300)
 })
 
-
-
-const fetchTop3Products = async () => {
+// ============ API 请求 ============
+const fetchAllData = async () => {
+  isLoading.value = true
   try {
-    const res = await getAllProducts()
-    if (res.data.data && res.data.data.length > 0) {
-      // 按销量降序排序
-      const sorted = [...res.data.data].sort((a, b) => b.sales - a.sales)
-      // 取前3个
-      top3Products.value = sorted.slice(0, 3)
-    }
+    const [productsRes, adsRes] = await Promise.all([
+      getAllProducts(),
+      getAllAdvertisements()
+    ])
+    products.value = productsRes.data.data || []
+    advertisements.value = adsRes.data.data || []
+    currentPage.value = 1
   } catch (err) {
-    console.error('获取销量前三商品失败:', err)
+    ElMessage.error('获取数据失败，请刷新重试')
+    console.error(err)
+  } finally {
+    isLoading.value = false
   }
 }
 
-// 获取广告列表（新增部分）
-const fetchAdvertisements = async () => {
-  try {
-    const res = await getAllAdvertisements();
-    advertisements.value = res.data.data;
-  } catch (err) {
-    ElMessage.error('获取广告列表失败');
-    console.error(err);
-  }
-};
-
-onMounted(() => {
-  fetchAdvertisements(); // 在页面加载时获取广告数据
-  fetchTop3Products()
-  performSearch() // 初始加载所有商品
-});
-
-// 点击创建商品按钮，跳转到创建商品界面
-function toCreateProductPage() {
-  router.push("/createproduct")
-}
-
-// 点击商品卡片，跳转到对应的商品详情界面
-function toProductDetailPage(productId: number) {
-  router.push(`/products/${productId}`)
-}
-function handleProductDelete(productId: number) {
-  products.value = products.value?.filter(p => p.id !== productId)
-}
-function toBackPage() {
-  router.back()
-}
-// 跳转到购物车页面
-const toCartPage = () => {
-  router.push("/cart");
-};
-
-
-const toAllAdvertisementsPage = () => {
-  router.push("/alladvertisements");
-};
-
-// 点击广告图片，跳转到对应商品详情页面
-function navigateToProduct(productId: number) {
-  if (productId) {
-    router.push(`/products/${productId}`);
-  } else {
-    ElMessage.warning('该广告未关联商品');
-  }
-}
-
-const searchQuery = ref('')
-const isSearching = ref(false)
 const performSearch = async () => {
   const keyword = searchQuery.value.trim()
+  
   if (!keyword && !selectedCategory.value) {
-    // 如果既没有搜索词也没有选择分类，加载所有商品
-    try {
-      const res = await getAllProducts()
-      products.value = res.data.data
-      currentPage.value = 1
-    } catch (err) {
-      ElMessage.error('获取商品列表失败')
-      console.error(err)
-    }
+    await fetchAllData()
     return
-
-    // 重置为所有假数据
-    // products.value = mockProducts
-    // currentPage.value = 1
-    // return
   }
 
-  isSearching.value = true
+  isLoading.value = true
   try {
     let res
     if (selectedCategory.value) {
-      // 如果有分类筛选，先获取分类商品
       res = await getProductsByCategory(selectedCategory.value)
       if (keyword) {
-        // 如果同时有关键词，在分类结果中过滤
         res.data.data = res.data.data.filter((product: Product) => (
-            product.title?.includes(keyword) ||
-            product.description?.includes(keyword)
-        ));}
+          product.title?.toLowerCase().includes(keyword.toLowerCase()) ||
+          product.description?.toLowerCase().includes(keyword.toLowerCase())
+        ))
+      }
     } else {
-      // 只有关键词，直接搜索
       res = await productApi.search(keyword)
     }
-
     products.value = res.data.data || []
+    currentPage.value = 1
+    // 搜索成功时弹出提示
+    ElMessage.success(`找到 ${products.value.length} 件商品`)
   } catch (err) {
-    console.error('操作出错:', err)
-    ElMessage.error("操作失败，请重试")
+    console.error('搜索失败:', err)
+    ElMessage.error("搜索失败，请重试")
   } finally {
-    isSearching.value = false
+    isLoading.value = false
   }
 }
 
-const categories = [
-  '玄幻',
-  '科幻'
-
-]
-const selectedCategory = ref('')
-
-// 分类筛选事件处理
-const handleCategoryChange = async (category: string) => {
-  selectedCategory.value = category
-  await performSearch() // 调用统一的处理函数
+// ============ 事件处理 ============
+const handleCurrentChange = (page: number) => {
+  currentPage.value = page
+  window.scrollTo({ top: 0, behavior: 'smooth' })
 }
+
+const handleProductDelete = (productId: number) => {
+  products.value = products.value.filter(p => p.id !== productId)
+  ElMessage.success('商品已删除')
+}
+
+const handleCategoryChange = async () => {
+  currentPage.value = 1
+  await performSearch()
+}
+
+const handleClearFilters = async () => {
+  searchQuery.value = ''
+  selectedCategory.value = ''
+  await fetchAllData()
+}
+
+// ============ 导航 ============
+const toCreateProductPage = () => {
+  router.push("/home/createproduct")
+}
+
+const toProductDetailPage = (productId: number) => {
+  router.push(`/home/products/${productId}`)
+}
+
+const toBackPage = () => {
+  router.back()
+}
+
+const toCartPage = () => {
+  router.push("/home/cart")
+}
+
+const toAllAdvertisementsPage = () => {
+  router.push("/home/alladvertisements")
+}
+
+const navigateToProduct = (productId: number) => {
+  if (productId) {
+    router.push(`/home/products/${productId}`)
+  } else {
+    ElMessage.warning('该广告未关联商品')
+  }
+}
+
+// ============ 生命周期 ============
+onMounted(() => {
+  fetchAllData()
+})
 
 
 </script>
 
 <template>
-  <div class="background-overlay"></div> <!-- 背景遮罩层 -->
-  <el-main class="custom-main">
+  <el-main class="product-main">
+    <!-- 头部导航栏 -->
+    <div class="header-bar">
+      <!-- 第一行：标题、版本标签、用户、退出和操作按钮 -->
+      <div class="header-top">
+        <div class="header-left-space"></div>
+        <div class="header-title">
+          <h1 class="page-title">商品中心</h1>
+        </div>
+        <div class="header-right-top">
+          <el-tag class="role-tag">{{ parseRole(role) }}版</el-tag>
+          <div class="action-buttons-group">
+            <el-button type="primary" @click="toCartPage" :icon="SearchIcon" class="header-action-btn">
+              购物车
+            </el-button>
+            <el-button v-if="role === 'MANAGER'" type="success" @click="toCreateProductPage" :icon="Plus" class="header-action-btn">
+              新建商品
+            </el-button>
+            <el-button v-if="role === 'MANAGER'" type="warning" @click="toAllAdvertisementsPage" plain class="header-action-btn">
+              广告管理
+            </el-button>
+            <el-icon @click="navigateToDashboard" :size="28" class="header-icon-btn"><User /></el-icon>
+            <el-icon @click="logout" :size="28" class="header-icon-btn"><SwitchButton /></el-icon>
+          </div>
+        </div>
+      </div>
 
-    <div class="button-group">
-      <el-button type="success" plain @click="toAllAdvertisementsPage">
-        <el-icon name="document"></el-icon> 前往广告列表
-      </el-button>
-      <el-button v-if="role === 'MANAGER'" type="primary" plain @click="toCreateProductPage">
-        <el-icon name="plus"></el-icon> 创建商品
-      </el-button>
+      <!-- 第二行：搜索和筛选 -->
+      <div class="header-center">
+        <div class="filter-row">
+          <el-input
+            v-model="searchQuery"
+            placeholder="搜索商品名称或描述..."
+            prefix-icon="Search"
+            clearable
+            class="search-input"
+          />
+          <el-select
+            v-model="selectedCategory"
+            placeholder="按分类筛选"
+            @change="handleCategoryChange"
+            clearable
+            class="category-select"
+          >
+            <el-option
+              v-for="category in categories"
+              :key="category"
+              :label="category"
+              :value="category"
+            />
+          </el-select>
+          <el-button @click="handleClearFilters" type="info" plain v-if="searchQuery || selectedCategory" class="clear-btn">
+            清除筛选
+          </el-button>
+        </div>
+      </div>
     </div>
 
-  <el-button @click="toBackPage()" type="primary" circle plain style="margin-left: 30px;">
-    <el-icon><Back /></el-icon>
-  </el-button>
-
-  <!-- 广告轮播 -->
-  <div class="ad-carousel">
-    <el-carousel :interval="4000" arrow="always" height="500px" autoplay>
-      <el-carousel-item v-for="ad in advertisements" :key="ad.id">
-        <img
+    <!-- 广告轮播区 -->
+    <div v-if="advertisements.length > 0" class="carousel-section">
+      <el-carousel :interval="5000" arrow="always" height="400px" autoplay>
+        <el-carousel-item v-for="ad in advertisements" :key="ad.id">
+          <img
             :src="ad.imgUrl"
-            alt="广告图片"
+            alt="广告"
             class="carousel-image"
             @click="navigateToProduct(ad.productId)"
-            style="cursor: pointer;"
-        />
-      </el-carousel-item>
-    </el-carousel>
-  </div>
-
-
-
-  <!-- 搜索与分类筛选 -->
-  <div class="search-and-filter">
-    <div class="search-container">
-      <el-input
-          v-model="searchQuery"
-          placeholder="请输入关键词"
-          @keyup.enter="performSearch"
-          class="search-input"
-      />
-      <el-button type="primary" @click="performSearch">搜索</el-button>
+          />
+        </el-carousel-item>
+      </el-carousel>
     </div>
 
-    <el-select
-        v-model="selectedCategory"
-        placeholder="请选择分类"
-        @change="handleCategoryChange"
-        class="custom-category-select"
-    >
-      <el-option
-          v-for="category in categories"
-          :key="category"
-          :label="category"
-          :value="category"
-      />
-    </el-select>
-  </div>
+    <!-- 加载状态 -->
+    <div v-if="isLoading" class="loading-container">
+      <el-skeleton :count="6" animated />
+    </div>
 
+    <!-- 空状态 -->
+    <div v-else-if="products.length === 0" class="empty-state">
+      <div class="empty-icon">📦</div>
+      <p class="empty-text">未找到相关商品</p>
+      <el-button type="primary" link @click="handleClearFilters">
+        清除筛选条件，查看全部商品
+      </el-button>
+    </div>
 
-
-    <!-- 新增销量前三展示区 -->
-<!--    <div class="top3-container">-->
-<!--      <h2 class="top3-title">🏆 畅销排行榜</h2>-->
-<!--    <div class="top3-horizontal">-->
-<!--      &lt;!&ndash; 亚军 &ndash;&gt;-->
-<!--      <div v-if="top3Products[1]" class="top3-item runner-up" @click="toProductDetailPage(top3Products[1].id)">-->
-<!--        <div class="top3-badge">🥈 亚军</div>-->
-<!--        <div class="image-wrapper">-->
-<!--          <img :src="top3Products[1].cover" alt="亚军商品" class="top3-image"/>-->
-<!--        </div>-->
-<!--        <div class="top3-info">-->
-<!--          <h3>{{ top3Products[1].title }}</h3>-->
-<!--          <p class="sales">销量: {{ top3Products[1].sales }}</p>-->
-<!--        </div>-->
-<!--      </div>-->
-
-<!--      &lt;!&ndash; 冠军（现在在中间） &ndash;&gt;-->
-<!--      <div v-if="top3Products[0]" class="top3-item champion" @click="toProductDetailPage(top3Products[0].id)">-->
-<!--        <div class="top3-badge">👑 冠军</div>-->
-<!--        <div class="image-wrapper">-->
-<!--          <img :src="top3Products[0].cover" alt="冠军商品" class="top3-image"/>-->
-<!--        </div>-->
-<!--        <div class="top3-info">-->
-<!--          <h3>{{ top3Products[0].title}}</h3>-->
-<!--          <p class="sales">销量: {{ top3Products[0].sales }}</p>-->
-<!--        </div>-->
-<!--      </div>-->
-
-<!--      &lt;!&ndash; 季军 &ndash;&gt;-->
-<!--      <div v-if="top3Products[2]" class="top3-item third-place" @click="toProductDetailPage(top3Products[2].id)">-->
-<!--        <div class="top3-badge">🥉 季军</div>-->
-<!--        <div class="image-wrapper">-->
-<!--          <img :src="top3Products[2].cover" alt="季军商品" class="top3-image"/>-->
-<!--        </div>-->
-<!--        <div class="top3-info">-->
-<!--          <h3>{{ top3Products[2].title }}</h3>-->
-<!--          <p class="sales">销量: {{ top3Products[2].sales }}</p>-->
-<!--        </div>-->
-<!--      </div>-->
-<!--    </div>-->
-<!--    </div>-->
-
-
-    <!-- 商品展示 -->
-    <!-- 商品展示 -->
-    <div class="product-container">
+    <!-- 商品网格 -->
+    <div v-else class="products-section">
       <div class="product-grid">
         <ProductCard
-            v-for="product in paginatedProducts"
-            :key="product.id"
-            :product="product"
-            @delete="handleProductDelete"
-            @click="toProductDetailPage(product.id)"
+          v-for="product in paginatedProducts"
+          :key="product.id"
+          :product="product"
+          @delete="handleProductDelete"
+          @click="toProductDetailPage(product.id)"
         />
       </div>
 
-      <!-- 分页组件 -->
-      <div class="pagination-container">
+      <!-- 分页器 -->
+      <div class="pagination-wrapper">
         <el-pagination
-            v-model:current-page="currentPage"
-            :page-size="pageSize"
-            :total="products.length"
-            layout="prev, pager, next, jumper, total"
-            @current-change="handleCurrentChange"
-            background
+          v-model:current-page="currentPage"
+          :page-size="pageSize"
+          :total="products.length"
+          layout="total, prev, pager, next, jumper"
+          @current-change="handleCurrentChange"
+          background
         />
       </div>
     </div>
 
-    <!-- 悬浮购物车按钮 -->
-    <div class="floating-cart-button" @click="toCartPage">
-      🛒购物车
+    <!-- 浮动购物车按钮 -->
+    <div class="floating-action" @click="toCartPage">
+      <span class="action-icon">🛒</span>
+      <span class="action-text">购物车</span>
     </div>
   </el-main>
-
 </template>
 
 <style scoped>
-/* 主体背景 */
-.background-overlay {
-  position: absolute;
+/* ============ 全局 ============ */
+.product-main {
+  background: #0a0e27;
+  min-height: 100vh;
+  padding: 0;
+  font-family: 'Poppins', 'Inter', sans-serif;
+  position: relative;
+}
+
+.product-main::before {
+  content: '';
+  position: fixed;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-  background-color: rgba(255, 255, 255, 0.8);
-  z-index: -1;
-  pointer-events: none; /* 不拦截鼠标事件 */
-}
-.custom-main {
-  position: relative;
-  background-image: url("../../assets/book1.jpg");
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-  padding: 30px;
-  min-height: 100vh;
-}
-/* 广告样式 */
-.ad-banner {
-  position: fixed;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 200px;
-  height: 400px;
-  z-index: 1000;
-  cursor: pointer;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-  border-radius: 10px;
+  background: 
+    repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 2px,
+      rgba(214, 40, 40, 0.02) 2px,
+      rgba(214, 40, 40, 0.02) 4px
+    );
+  pointer-events: none;
+  z-index: 0;
 }
 
-.left-ad {
-  left: 30px;
-}
-
-.right-ad {
-  right: 30px;
-}
-
-.ad-banner img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  border-radius: 10px;
-}
-
-.close-btn {
-  position: absolute;
-  top: 5px;
-  right: 5px;
-  background-color: rgba(0, 0, 0, 0.5);
+/* ============ 头部导航栏 ============ */
+.header-bar {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: center;
+  background: linear-gradient(135deg, #6b5b95 0%, #8b5fb5 100%);
   color: white;
-  border: none;
-  border-radius: 50%;
-  width: 20px;
-  height: 20px;
-  font-size: 14px;
-  line-height: 20px;
-  text-align: center;
+  padding: 12px 40px;
+  box-shadow: 0 0 0 2px #d4af37, 0 12px 40px rgba(107, 91, 149, 0.4);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  border-bottom: 4px solid #d4af37;
+  animation: slide-in-right 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+  border-left: 5px solid #d4af37;
+  border-right: 5px solid #d4af37;
+  gap: 12px;
+}
+
+.header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 20px;
+}
+
+.header-left-space {
+  flex: 1;
+  min-width: 100px;
+}
+
+.header-title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.header-right-top {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 20px;
+}
+
+.role-tag {
+  font-size: 12px;
+  background-color: rgba(255, 255, 255, 0.2);
+  color: white;
+  border: 2px solid white;
+  font-weight: 600;
+  padding: 4px 8px;
+  white-space: nowrap;
+}
+
+.action-buttons-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.header-action-btn {
+  font-size: 12px;
+  padding: 6px 12px !important;
+  height: auto;
+}
+
+.header-icon-btn {
   cursor: pointer;
+  transition: transform 0.3s ease, color 0.3s ease;
+  color: white;
+  margin-left: 8px;
 }
 
-.close-btn:hover {
-  background-color: rgba(0, 0, 0, 0.8);
+.header-icon-btn:first-of-type {
+  margin-left: 0;
 }
 
-/* 广告轮播 */
-.ad-carousel {
-  margin: 0px auto;
+.header-icon-btn:hover {
+  transform: scale(1.15);
+  color: #ffcc00;
+}
+
+.header-bar > div:nth-child(2),
+.header-bar > div:nth-child(3) {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  width: 100%;
+  justify-content: space-between;
+}
+
+.header-center {
+  flex: 1;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.page-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 24px;
+  font-weight: 900;
+  margin: 0;
+  color: white;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  text-shadow: 2px 2px 6px rgba(0, 0, 0, 0.5);
+}
+
+.header-bar :deep(.el-button--primary) {
+  background-color: transparent;
+  border-color: transparent;
+  color: white;
+  font-weight: 700;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.header-bar :deep(.el-button--primary:hover) {
+  background-color: rgba(212, 175, 55, 0.3);
+  color: white;
+  border-color: #d4af37;
+  transform: scale(1.05);
+  box-shadow: 0 4px 15px rgba(212, 175, 55, 0.3);
+  animation: elastic-bounce 0.5s ease-out;
+}
+
+.header-bar :deep(.el-button--success) {
+  background-color: transparent;
+  border-color: transparent;
+  color: white;
+  font-weight: 700;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.header-bar :deep(.el-button--success:hover) {
+  background-color: rgba(0, 208, 132, 0.3);
+  border-color: #00d084;
+  color: white;
+  transform: scale(1.05);
+  box-shadow: 0 4px 15px rgba(0, 208, 132, 0.3);
+  animation: elastic-bounce 0.5s ease-out;
+}
+
+.header-bar :deep(.el-button--warning) {
+  background-color: transparent;
+  border-color: transparent;
+  color: white;
+  font-weight: 700;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.header-bar :deep(.el-button--warning:hover) {
+  background-color: rgba(212, 175, 55, 0.3);
+  border-color: #d4af37;
+  color: white;
+  transform: scale(1.05);
+  box-shadow: 0 4px 15px rgba(212, 175, 55, 0.3);
+  animation: elastic-bounce 0.5s ease-out;
+}
+
+/* ============ 轮播区 ============ */
+.carousel-section {
   max-width: 1200px;
-  width: 90%;
-  border-radius: 15px;
+  margin: 40px auto;
+  border-radius: 0;
   overflow: hidden;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
-  z-index: 1;
+  box-shadow: 0 0 0 3px #ffcc00, 0 12px 40px rgba(0, 0, 0, 0.3);
+  animation: expand-grow 0.7s cubic-bezier(0.34, 1.56, 0.64, 1);
   position: relative;
+  background: white;
 }
 
 .carousel-image {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  cursor: pointer;
   transition: transform 0.3s ease;
+  animation: pulse-glow 2s infinite;
 }
 
 .carousel-image:hover {
   transform: scale(1.05);
+  animation: flash-shine 0.6s ease-in-out;
 }
 
-/* 搜索和分类 */
-.search-and-filter {
+/* ============ 筛选区 ============ */
+.filter-section {
+  max-width: 1200px;
+  margin: 40px auto;
+  padding: 30px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  border-left: 5px solid #d62828;
+  border-top: 3px solid #ffcc00;
+  animation: expand-grow 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+  font-family: 'Inter', 'Poppins', sans-serif;
+}
+
+.filter-row {
   display: flex;
+  gap: 12px;
+  align-items: center;
   justify-content: center;
-  align-items: center;
-  gap: 30px;
-  margin-top: 20px;
-  margin-bottom: 20px;
+  margin-bottom: 0;
   flex-wrap: wrap;
-}
-
-.search-container {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+  width: 100%;
 }
 
 .search-input {
-  width: 300px;
+  flex: 1;
+  min-width: 250px;
+  max-width: 350px;
 }
 
-.custom-category-select {
-  width: 300px;
-  font-size: 16px;
+.search-input :deep(.el-input__wrapper) {
+  background-color: rgba(255, 255, 255, 0.9);
+  border: 2px solid white;
+  border-radius: 4px;
+  transition: all 0.3s ease;
+  font-weight: 600;
 }
 
-/* 商品展示 */
-/* 商品展示 */
-.product-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 20px;
+.search-input :deep(.el-input__wrapper:hover),
+.search-input :deep(.el-input__wrapper:focus-within) {
+  background-color: white;
+  border-color: #d4af37;
+  box-shadow: 0 0 0 2px rgba(212, 175, 55, 0.3);
+}
+
+.category-select {
+  flex: 0 0 150px;
+  min-width: 150px;
+}
+
+.category-select :deep(.el-input__wrapper) {
+  background-color: rgba(255, 255, 255, 0.9);
+  border: 2px solid white;
+  border-radius: 4px;
+  transition: all 0.3s ease;
+}
+
+.category-select :deep(.el-input__wrapper:hover),
+.category-select :deep(.el-input__wrapper--focused) {
+  background-color: white;
+  border-color: #d4af37;
+  box-shadow: 0 0 0 2px rgba(212, 175, 55, 0.3);
+}
+
+.clear-btn {
+  min-width: 100px;
+}
+
+/* ============ 加载状态 ============ */
+.loading-container {
+  max-width: 1200px;
+  margin: 40px auto;
+  padding: 30px;
+}
+
+.loading-container :deep(.el-skeleton__item) {
+  height: 280px;
+  background: #e8e8e8;
+  animation: pulse-glow 1.5s ease-in-out infinite;
+}
+
+@keyframes loading {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* ============ 空状态 ============ */
+.empty-state {
+  max-width: 1200px;
+  margin: 80px auto;
+  text-align: center;
+  padding: 60px 30px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  border: 3px dashed #d62828;
+}
+
+.empty-icon {
+  font-size: 72px;
+  margin-bottom: 20px;
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.empty-text {
+  font-size: 18px;
+  color: #666;
+  margin-bottom: 20px;
+  font-weight: 700;
+}
+
+/* ============ 商品网格 ============ */
+.products-section {
+  max-width: 1200px;
+  margin: 40px auto;
+  padding: 30px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  border: 3px solid #ffcc00;
 }
 
 .product-grid {
   display: grid;
-  grid-template-columns: repeat(5, 1fr); /* 5列 */
-  grid-template-rows: repeat(2, 1fr); /* 3行 */
-  gap: 20px;
-  width: 100%;
-  max-width: 1400px;
-  margin: 0 auto;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 24px;
+  margin-bottom: 40px;
 }
 
-/* 分页样式 */
-.pagination-container {
+.product-grid > :deep(*) {
+}
+
+/* ============ 分页 ============ */
+.pagination-wrapper {
   display: flex;
   justify-content: center;
-  margin-top: 30px;
-  width: 100%;
+  padding: 20px;
+  border-top: 3px solid #d62828;
 }
 
-/* 响应式设计 */
+.pagination-wrapper :deep(.el-pagination) {
+  --el-pagination-bg-color: transparent;
+}
+
+.pagination-wrapper :deep(.el-pagination .btn-prev),
+.pagination-wrapper :deep(.el-pagination .btn-next),
+.pagination-wrapper :deep(.el-pagination .el-pager li) {
+  background-color: #1a1a2e;
+  border-color: #d62828;
+  border-radius: 6px;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  color: white;
+  font-weight: 700;
+}
+
+.pagination-wrapper :deep(.el-pagination .btn-prev:hover),
+.pagination-wrapper :deep(.el-pagination .btn-next:hover),
+.pagination-wrapper :deep(.el-pagination .el-pager li:hover) {
+  background-color: #d62828;
+  border-color: #ffcc00;
+  color: white;
+  box-shadow: 0 4px 12px rgba(214, 40, 40, 0.4);
+  animation: elastic-bounce 0.3s ease-out;
+}
+
+.pagination-wrapper :deep(.el-pagination .el-pager li.active) {
+  background-color: #ffcc00;
+  border-color: #ffcc00;
+  color: #1a1a2e;
+  font-weight: 700;
+}
+
+/* ============ 浮动按钮 ============ */
+.floating-action {
+  position: fixed;
+  bottom: 30px;
+  right: 30px;
+  width: 70px;
+  height: 70px;
+  background: #ffcc00;
+  color: #1a1a2e;
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 0 0 3px #d62828, 0 12px 32px rgba(214, 40, 40, 0.6);
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  z-index: 99;
+  font-weight: 700;
+  border: 5px solid #1a1a2e;
+  animation: pulse-glow 2s ease-in-out infinite;
+  clip-path: polygon(0 0, 85% 0, 100% 15%, 100% 100%, 15% 100%, 0 85%);
+}
+
+.floating-action:hover {
+  transform: scale(1.2) rotate(-8deg);
+  box-shadow: 0 16px 40px rgba(214, 40, 40, 0.7);
+  filter: brightness(1.15);
+  animation: elastic-bounce 0.4s ease-out;
+}
+
+.action-icon {
+  font-size: 28px;
+  margin-bottom: 2px;
+}
+
+.action-text {
+  font-size: 12px;
+}
+
+/* ============ 响应式设计 ============ */
 @media (max-width: 1200px) {
-  .product-grid {
-    grid-template-columns: repeat(4, 1fr);
+  .header-bar {
+    flex-wrap: wrap;
+    padding: 15px 20px;
+    gap: 10px;
   }
-}
 
-@media (max-width: 992px) {
+  .page-title {
+    font-size: 22px;
+    width: 100%;
+    order: 3;
+    margin-top: 10px;
+  }
+
+  .filter-section {
+    margin: 20px 15px;
+    padding: 20px;
+  }
+
   .product-grid {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 16px;
   }
 }
 
 @media (max-width: 768px) {
+  .header-bar {
+    padding: 10px 15px;
+  }
+
+  .header-top {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .header-top {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .header-title {
+    width: 100%;
+  }
+
+  .header-right-top {
+    width: 100%;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .header-action-btn {
+    font-size: 11px;
+    padding: 4px 8px !important;
+  }
+
+  .page-title {
+    font-size: 16px;
+  }
+
+  .filter-row {
+    flex-direction: column;
+  }
+
+  .search-input {
+    width: 100%;
+    max-width: 100%;
+    min-width: unset;
+  }
+
+  .category-select {
+    width: 100%;
+    flex: unset;
+    min-width: unset;
+  }
+
   .product-grid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 12px;
+  }
+
+  .floating-action {
+    width: 60px;
+    height: 60px;
+    bottom: 20px;
+    right: 20px;
+  }
+
+  .action-icon {
+    font-size: 24px;
+  }
+
+  .action-text {
+    font-size: 10px;
   }
 }
 
 @media (max-width: 480px) {
   .product-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* 添加商品按钮 */
-.add-product-button {
-  margin-left: 30px;
-  margin-bottom: 20px;
-}
-
-/* 悬浮购物车按钮 */
-.floating-cart-button {
-  position: fixed;
-  bottom: 20px;
-  right: 20px;
-  background-color: #1677ff;
-  color: white;
-  padding: 10px 20px;
-  border-radius: 50px;
-  cursor: pointer;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-  font-size: 16px;
-  z-index: 1001;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  transition: background-color 0.3s ease;
-}
-
-.floating-cart-button:hover {
-  background-color: #1890ff;
-}
-
-
-
-@keyframes assistant-bounce {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.05); }
-}
-
-
-@keyframes fadeInOut {
-  0% { opacity: 0; }
-  10% { opacity: 1; }
-  90% { opacity: 1; }
-  100% { opacity: 0; }
-}
-
-/* 按钮组容器 */
-.button-group {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  margin-top: 0px;
-  margin-bottom: 10px;
-  z-index: 10;
-}
-
-
-.button-group .el-button {
-  width: 180px;
-  height: 45px;
-  border-radius: 25px;
-  font-weight: bold;
-  font-size: 15px;
-  transition: all 0.3s ease;
-  background-color: rgba(255, 255, 255, 0.9);
-  border-width: 2px;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-  color: #333;
-  backdrop-filter: blur(5px);
-}
-
-.button-group .el-button[type="success"] {
-  border-color: #67c23a;
-  color: #67c23a;
-}
-
-.button-group .el-button[type="success"]:hover {
-  background-color: #67c23a;
-  color: white;
-}
-
-.button-group .el-button[type="primary"] {
-  border-color: #409EFF;
-  color: #409EFF;
-}
-
-.button-group .el-button[type="primary"]:hover {
-  background-color: #409EFF;
-  color: white;
-}
-
-/* 按钮间距 */
-.button-group .el-button:not(:last-child) {
-  margin-bottom: 15px;
-}
-
-.top3-container {
-  margin: 30px auto;
-
-  max-width: 600px;
-  background: rgba(255, 255, 255, 0.95);
-  border-radius: 8px;
-  padding: 15px;
-  box-shadow: 0 3px 9px rgba(0, 0, 0, 0.08);
-}
-
-.top3-title {
-  text-align: center;
-  color: #333;
-  margin-bottom: 20px;
-  font-size: 14px;
-  font-weight: 600;
-  text-shadow: 0 1px 2px rgba(0,0,0,0.1);
-}
-
-.top3-horizontal {
-  display: flex;
-  justify-content: center;
-  align-items: flex-end;
-  gap: 10px;
-}
-
-/* 通用卡片样式 */
-.top3-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 20px;
-  border-radius: 6px;
-  width: 140px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
-  transition: all 0.3s ease;
-}
-
-/* 冠军样式 */
-.champion {
-  background: linear-gradient(145deg, #fff8d6, #ffeb3b);
-  border: 1px solid #ffc107;
-  height: 190px;
-  z-index: 3;
-  transform: translateY(-10px) scale(1.1);
-}
-
-/* 亚军样式 */
-.runner-up {
-  background: linear-gradient(145deg, #f0f0f0, #e0e0e0);
-  border: 1px solid #9e9e9e;
-  height: 170px;
-}
-
-/* 季军样式 */
-.third-place {
-  background: linear-gradient(145deg, #ffd7c7, #ffab91);
-  border: 1px solid #ff8a65;
-  height: 170px;
-}
-
-/* 悬停效果 */
-.top3-item:hover {
-  transform: translateY(-12px) scale(1.05);
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.2);
-}
-
-.champion:hover {
-  transform: translateY(-15px) scale(1.15);
-}
-
-/* 奖牌标识 */
-.top3-badge {
-  font-size: 11px;
-  font-weight: bold;
-  margin-bottom: 10px;
-  padding: 4px 10px;
-  border-radius: 15px;
-}
-
-.champion .top3-badge {
-  box-shadow: 0 2px 4px rgba(255, 152, 0, 0.3);
-}
-
-.runner-up .top3-badge {
-  box-shadow: 0 2px 4px rgba(158, 158, 158, 0.3);
-}
-
-.third-place .top3-badge {
-  box-shadow: 0 2px 4px rgba(255, 112, 67, 0.3);
-}
-
-/* 图片容器 */
-.image-wrapper {
-  width: 150px;
-  height: 200px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  margin-bottom: 10px;
-  border-radius: 4px;
-  overflow: hidden; /* 确保图片不会溢出容器 */
-  background: white;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
-  padding: 2px; /* 减少内边距 */
-}
-
-.champion .image-wrapper {
-  width: 160px;
-  height: 280px;
-}
-
-.top3-image {
-  width: auto;
-  height: auto;
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain; /* 保持比例完整显示 */
-  object-position: center;
-  transition: transform 0.2s ease;
-}
-/* 商品信息 */
-.top3-info h3 {
-  margin: 0 0 5px 0;
-  font-size: 15px;
-}
-
-.sales {
-  font-size: 15px;
-}
-
-/* 响应式设计 */
-@media (max-width: 768px) {
-  .top3-horizontal {
-    flex-direction: column;
-    gap: 12px;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
   }
 
-  .top3-item {
-    width: 80%;
-    max-width: 150px;
-    height: auto !important;
-    transform: none !important;
+  .header-bar {
+    gap: 5px;
   }
 
-  .image-wrapper, .champion .image-wrapper {
-    width: 70px;
-    height: 90px;
-  }
-}
-@media (max-width: 768px) {
-  .image-wrapper,
-  .champion .image-wrapper {
-    width: 70px;
-    height: 85px;
-    padding: 2px;
+  .header-bar :deep(.el-button) {
+    font-size: 12px;
+    padding: 6px 10px;
   }
 }
 </style>
