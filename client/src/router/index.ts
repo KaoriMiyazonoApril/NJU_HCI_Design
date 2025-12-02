@@ -19,47 +19,46 @@ const router = createRouter({
         },
         {
             path: '/home',
-            redirect: '/dashboard',
             component: () => import('../views/Home.vue'),
             children: [
                 {
-                    path: '/dashboard/:username',
+                    path: 'dashboard/:username',
                     name: 'Dashboard',
                     component: () => import('../views/account/DashBoard.vue'),
                     meta: { title: '个人信息' }
                 },
                 {
-                    path: '/blank',
+                    path: 'blank',
                     name: 'BlankPage',
                     component: () => import('../views/account/BlankPage.vue'),
                     meta: { title: '空白页' }
                 },
                 {
-                    path: '/allproduct',
-                    name: '/AllProduct',
+                    path: 'allproduct',
+                    name: 'AllProduct',
                     component: () => import('../views/product/AllProduct.vue'),
                     meta: { title: '商品列表' }
                 },
                 {
-                    path: '/createproduct',
-                    name: '/CreateProduct',
+                    path: 'createproduct',
+                    name: 'CreateProduct',
                     component: () => import('../views/product/CreateProduct.vue'),
                     meta: { title: '创建商品' }
                 },
                 {
-                    path: '/products/:id',
+                    path: 'products/:id',
                     name: 'ProductDetail',
                     component: () => import('../views/product/ProductDetail.vue'),
                     meta: { title: '商品详细信息' }
                 },
                 {
-                    path: "/product/:id/edit-stock",
+                    path: "product/:id/edit-stock",
                     name: "StockEdit",
                     component: () => import('../views/product/StockEdit.vue'),
                     meta: { title: '商品库存编辑' }
                 },
                 {
-                    path: '/cart', // 购物车页面路由
+                    path: 'cart', // 购物车页面路由
                     name: 'Cart',
                     component: () => import('../views/cart/Cart.vue'),
                     meta: { title: '购物车' }
@@ -71,27 +70,23 @@ const router = createRouter({
                     meta: { title: '支付' }
                 },
                 {
-                    path: '/alladvertisements',
+                    path: 'alladvertisements',
                     name: 'AllAdvertisements',
                     component: () => import('../views/advertisement/AllAdvertisements.vue'),
                     meta: { title: '广告列表' }
                 },
                 {
-                    path: '/createadvertisement',
+                    path: 'createadvertisement',
                     name: 'CreateAdvertisement',
                     component: () => import('../views/advertisement/CreateAdvertisement.vue'),
                     meta: { title: '创建广告' }
                 },
                 {
-                    path: '/editadvertisement/:id',
+                    path: 'editadvertisement/:id',
                     name: 'EditAdvertisement',
                     component: () => import('../views/advertisement/EditAdvertisement.vue'),
                     meta: { title: '编辑广告' }
                 }
-
-
-
-
             ]
         },
 

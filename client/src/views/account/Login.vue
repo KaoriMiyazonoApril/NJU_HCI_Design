@@ -33,14 +33,16 @@ function handleLogin() {
       sessionStorage.setItem('token', token)
       sessionStorage.setItem('username', username.value)
 
-
       // 获取用户信息
       userInfo(username.value).then(res => {
         sessionStorage.setItem('name', res.data.data.name);
         sessionStorage.setItem('role', res.data.data.role);
         sessionStorage.setItem('id', res.data.data.id);
-        // router.push({path: "/dashboard/" + username.value})
-        router.push({ path: '/allproduct' })
+        router.push({ path: '/home/allproduct' })
+      }).catch(err => {
+        console.error('获取用户信息失败:', err)
+        // 即使获取用户信息失败，仍然尝试跳转
+        router.push({ path: '/home/allproduct' })
       })
     } else if (res.data.code === '400') {
       ElMessage({
@@ -50,6 +52,13 @@ function handleLogin() {
       })
       password.value = ''
     }
+  }).catch(err => {
+    console.error('登录失败:', err)
+    ElMessage({
+      message: '登录失败，请检查网络连接',
+      type: 'error',
+      center: true,
+    })
   })
 }
 </script>
