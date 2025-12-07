@@ -41,7 +41,10 @@ const handleDelete = (id: number) => {
       <el-button type="danger" size="small" @click.stop="handleDelete(product.id!)">删除</el-button>
     </div>
 
-    <el-image class="product-image" :src="product.cover || 'https://via.placeholder.com/300'" fit="cover" />
+    <!-- 修改图片容器，使用标准书籍封面比例 -->
+    <div class="book-cover-container">
+      <el-image class="book-cover-image" :src="product.cover || 'https://via.placeholder.com/240x300'" fit="cover" />
+    </div>
 
     <div style="padding: 14px">
       <h3 class="product-title">{{ product.title || '未知商品' }}</h3>
@@ -60,14 +63,9 @@ const handleDelete = (id: number) => {
 .product-card {
   position: relative;
   width: 280px;
-  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: all 0.3s;
   cursor: pointer;
-  background-color: transparent;
-}
-
-.product-card:hover {
-  transform: scale(1.08) translateY(-10px);
-  animation: pulse-glow 1s ease-in-out infinite;
+  background-color: transparent; /* 主卡片本身透明 */
 }
 
 .delete-button {
@@ -103,14 +101,6 @@ const handleDelete = (id: number) => {
   overflow: hidden;
   text-overflow: ellipsis;
   color: #333;
-  font-family: 'Poppins', sans-serif;
-  font-weight: 700;
-  transition: all 0.3s ease;
-}
-
-.product-card:hover .product-title {
-  color: #d62828;
-  animation: flash-shine 0.6s ease-in-out;
 }
 
 .product-meta {
@@ -119,17 +109,17 @@ const handleDelete = (id: number) => {
   align-items: center;
   margin-bottom: 8px;
 }
-
-.product-price {
-  color: #d62828;
-  font-size: 20px;
-  font-weight: 800;
-  font-family: 'Poppins', sans-serif;
+.product-score {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
 }
 
-.product-card:hover .product-price {
-  animation: pulse-glow 1.5s ease-in-out infinite;
-  box-shadow: 0 0 15px rgba(214, 40, 40, 0.6);
+.product-price {
+  color: #f56c6c;
+  font-size: 18px;
+  font-weight: bold;
 }
 
 .product-description {
