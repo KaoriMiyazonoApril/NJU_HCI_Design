@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {ref} from 'vue'
+import {useRouter} from 'vue-router'
 import {parseRole} from "../../utils"
 import {userInfo, userInfoUpdate, type UpdateInfo, deleteUser} from "../../api/accounts.ts"
 import { ElMessageBox, ElMessage } from 'element-plus'
@@ -14,7 +15,7 @@ const user = ref({
   role: '',
 });
 
-
+const router = useRouter()
 
 
 
@@ -265,170 +266,259 @@ const handleLogout = () => {
     ElMessage.info('已取消注销');
   });
 };
+const goHome = () => {
+  router.push({ path: '/home/allproduct' })
+}
 </script>
 
 <template>
-  <el-main class="main-container">
-    <el-card class="aside-card">
-      <div class="avatar-area">
-        <el-avatar :src="typeof user.avatar === 'string' ? user.avatar : undefined" :size="80">
+  <div class="dashboard-container">
+    <div class="profile-header">
+      <div class="avatar-section">
+        <el-avatar :src="typeof user.avatar === 'string' ? user.avatar : undefined" :size="120">
         </el-avatar>
-        <span class="avatar-text"> 欢迎您，{{ user.username }}</span>
-      </div>
-
-      <el-divider></el-divider>
-      <!--      个人信息展示-->
-      <el-descriptions :column="1" border title="个人信息">
-        <template #extra>
-          <el-button type="primary" @click="toggleEditMode">
-            {{ displayInfoCard ? '取消编辑' : '编辑个人信息' }}
-          </el-button>
-        </template>
-
-        <el-descriptions-item label="用户名">
-          {{ user.username }}
-        </el-descriptions-item>
-
-        <el-descriptions-item label="身份">
-          <el-tag>{{ parseRole(user.role) }}</el-tag>
-        </el-descriptions-item>
-
-        <el-descriptions-item label="联系电话">
-          {{ user.telephone }}
-        </el-descriptions-item>
-
-        <el-descriptions-item label="邮箱">
-          {{ user.email }}
-        </el-descriptions-item>
-
-        <el-descriptions-item label="地址">
-          {{ user.location }}
-        </el-descriptions-item>
-
-      </el-descriptions>
-
-      <el-divider></el-divider>
-      <el-descriptions :column="1" border title="账户安全">
-        <template #extra>
-          <el-button type="primary" @click="togglePasswordEditMode">
-            {{ displayPasswordCard ? '取消修改' : '修改密码' }}
-          </el-button>
-        </template>
-      </el-descriptions>
-      <el-divider />
-
-      <div class="logout-container">
-        <el-button type="danger" @click="handleLogout">注销账户</el-button>
-      </div>
-    </el-card>
-
-    <el-card v-if="displayInfoCard" class="change-card">
-      <template #header>
-        <div class="card-header">
-          <span>编辑个人信息</span>
-          <el-button @click="updateUserInfo">更新</el-button>
+        <div class="user-info">
+          <h2>{{ user.name }}</h2>
+          <p class="username">@{{ user.username }}</p>
+          <el-tag size="small">{{ parseRole(user.role) }}</el-tag>
         </div>
-      </template>
+      </div>
+      
+      <div class="welcome-section">
+        <h1>欢迎回来，{{ user.name }}!</h1>
+        <p>今天是{{ new Date().toLocaleDateString('zh-CN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) }}</p>
+        <el-button type="primary" @click="goHome" plain style="margin-top: 15px;">返回主页</el-button>
+      </div>
+    </div>
 
-      <el-form>
-
+    <el-row :gutter="20" class="content-row">
+      <el-col :span="24" class="info-section">
+        <el-card class="info-card">
+          <template #header>
+            <div class="card-header">
+              <h3>个人信息</h3>
+              <el-button type="primary" @click="toggleEditMode" size="small">
+                {{ displayInfoCard ? '取消编辑' : '编辑信息' }}
+              </el-button>
+            </div>
+          </template>
+          
+          <el-descriptions :column="1" border>
+            <el-descriptions-item label="用户名">
+              {{ user.username }}
+            </el-descriptions-item>
+            
+            <el-descriptions-item label="姓名">
+              {{ user.name }}
+            </el-descriptions-item>
+            
+            <el-descriptions-item label="联系电话">
+              {{ user.telephone }}
+            </el-descriptions-item>
+            
+            <el-descriptions-item label="邮箱">
+              {{ user.email }}
+            </el-descriptions-item>
+            
+            <el-descriptions-item label="地址">
+              {{ user.location }}
+            </el-descriptions-item>
+          </el-descriptions>
+        </el-card>
+        
+        <el-card class="security-card">
+          <template #header>
+            <div class="card-header">
+              <h3>账户安全</h3>
+              <el-button type="primary" @click="togglePasswordEditMode" size="small">
+                {{ displayPasswordCard ? '取消修改' : '修改密码' }}
+              </el-button>
+            </div>
+          </template>
+          
+          <div class="security-info">
+            <p><i class="el-icon-lock"></i> 密码保护</p>
+            <p><i class="el-icon-mobile"></i> 手机验证</p>
+            <p><i class="el-icon-message"></i> 邮箱验证</p>
+          </div>
+        </el-card>
+        
+        <div class="action-buttons">
+          <el-button type="danger" @click="handleLogout" plain>注销账户</el-button>
+        </div>
+      </el-col>
+    </el-row>
+    
+    <!-- 编辑信息弹窗 -->
+    <el-dialog v-model="displayInfoCard" title="编辑个人信息" width="500px" class="edit-dialog">
+      <el-form label-width="80px">
         <el-form-item label="用户名">
-          {{ user.username }}
+          <el-input v-model="user.username" disabled />
         </el-form-item>
-
+        
         <el-form-item label="姓名">
           <el-input v-model="editableUser.name" placeholder="请输入您的姓名" />
         </el-form-item>
-
+        
         <el-form-item label="头像">
-          <input type="file" accept="image/*" @change="onFileChange" />
+          <input type="file" accept="image/*" @change="onFileChange" class="file-input" />
         </el-form-item>
-
+        
         <el-form-item label="联系电话">
           <el-input v-model="editableUser.telephone" placeholder="请输入11位手机号" />
         </el-form-item>
-
+        
         <el-form-item label="邮箱">
           <el-input v-model="editableUser.email" placeholder="请输入邮箱地址" />
         </el-form-item>
-
+        
         <el-form-item label="所在地">
           <el-input v-model="editableUser.location" placeholder="请输入所在地" />
         </el-form-item>
-
       </el-form>
-    </el-card>
-
-    <el-card v-if="displayPasswordCard" class="change-password-card">
-      <template #header>
-        <div class="card-header">
-          <span>修改密码</span>
-          <el-button type="primary" @click="updatePassword">保存</el-button>
-        </div>
+      
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="toggleEditMode">取消</el-button>
+          <el-button type="primary" @click="updateUserInfo">保存</el-button>
+        </span>
       </template>
-
-      <el-form>
-
+    </el-dialog>
+    
+    <!-- 修改密码弹窗 -->
+    <el-dialog v-model="displayPasswordCard" title="修改密码" width="500px" class="password-dialog">
+      <el-form label-width="100px">
         <el-form-item label="新密码" :error="passwordErrors.newPassword">
-          <el-input v-model="passwordForm.newPassword" type="password" placeholder="请输入新密码" />
+          <el-input v-model="passwordForm.newPassword" type="password" placeholder="请输入新密码" show-password />
         </el-form-item>
-
+        
         <el-form-item label="确认新密码" :error="passwordErrors.confirmPassword">
-          <el-input v-model="passwordForm.confirmPassword" type="password" placeholder="请再次输入新密码" />
+          <el-input v-model="passwordForm.confirmPassword" type="password" placeholder="请再次输入新密码" show-password />
         </el-form-item>
       </el-form>
-    </el-card>
-  </el-main>
-
+      
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="togglePasswordEditMode">取消</el-button>
+          <el-button type="primary" @click="updatePassword">保存</el-button>
+        </span>
+      </template>
+    </el-dialog>
+  </div>
 </template>
 
 <style scoped>
-.main-container {
-  display: flex;
-  flex-direction: row;
-  padding: 15px;
-  gap: 5px;
-  justify-content: center;
+.dashboard-container {
+  padding: 20px;
+  background: linear-gradient(135deg, #f5f7fa 0%, #e4edf5 100%);
+  min-height: calc(100vh - 60px);
 }
 
-.card-header {
+.profile-header {
   display: flex;
-  align-items: center;
   justify-content: space-between;
-}
-
-.change-card {
-  width: 66%;
-}
-
-.change-password-card {
-  width: 66%;
-}
-
-.avatar-area {
-  display: flex;
-  justify-content: space-around;
   align-items: center;
-  gap: 30px;
+  background: white;
+  border-radius: 15px;
+  padding: 30px;
+  margin-bottom: 20px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
 }
 
-.avatar-text {
-  font-size: x-large;
-  font-weight: bolder;
-  padding-right: 40px;
-}
-.logout-container {
-  display: flex;
-  justify-content: center;
-  margin-top: 20px;
-}
-.avatar-upload-area {
+.avatar-section {
   display: flex;
   align-items: center;
   gap: 20px;
 }
 
-.upload-label {
+.user-info h2 {
+  margin: 0 0 5px 0;
+  font-size: 24px;
+}
+
+.username {
+  color: #666;
+  margin: 0 0 10px 0;
+}
+
+.welcome-section h1 {
+  margin: 0 0 10px 0;
+  color: #333;
+}
+
+.welcome-section p {
+  color: #666;
+  margin: 0;
+}
+
+.content-row {
+  margin: 0;
+}
+
+.info-section {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.info-card, .security-card {
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.security-info p {
+  margin: 10px 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.security-info i {
+  color: #409eff;
+  font-size: 16px;
+}
+
+.action-buttons {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+.edit-dialog .el-form-item, .password-dialog .el-form-item {
+  margin-bottom: 20px;
+}
+
+.file-input {
+  width: 100%;
+  padding: 10px;
+  border: 1px dashed #dcdfe6;
+  border-radius: 4px;
   cursor: pointer;
+}
+
+.file-input:hover {
+  border-color: #409eff;
+}
+
+@media (max-width: 768px) {
+  .profile-header {
+    flex-direction: column;
+    text-align: center;
+    gap: 20px;
+  }
+  
+  .avatar-section {
+    flex-direction: column;
+  }
+  
+  .info-section {
+    gap: 15px;
+  }
 }
 </style>
