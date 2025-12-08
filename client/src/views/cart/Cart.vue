@@ -160,109 +160,135 @@ onMounted(() => {
 
 <template>
   <el-main class="background">
-  <el-button @click="toBackPage()" type="primary" circle plain>
-    <el-icon><Back /></el-icon>
-  </el-button>
-  <div class="cart-container">
-    <h1>您的购物车</h1>
-    <div v-if="cartItems.length === 0" class="empty-cart">
-      购物车为空，请添加商品！
-    </div>
-    <div v-else class="cart-items">
-      <div v-for="item in cartItems" :key="item.cartItemId" class="cart-item">
-        <img :src="item.cover" alt="商品封面" class="cart-item-image" />
-        <div class="cart-item-info">
-          <h3>{{ item.title }}</h3>
-          <p>价格：{{ item.price }} 元</p>
-          <p>
-            数量：
-            <input
-                type="number"
-                :value="item.quantity"
-                @change="(e) => handleChangeQuantity(item.cartItemId, parseInt(e.target.value))"
-                min="1"
-            />
-          </p>
+
+    <!-- 返回按钮 -->
+    <el-button class="back-button" @click="toBackPage()" type="text" >
+        <el-icon><Back /></el-icon>
+        <span>返回</span>
+    </el-button>
+
+    <div class="cart-container">
+      <h1 class="cart-title">您的购物车</h1>
+
+      <div v-if="cartItems.length === 0" class="empty-cart">
+        购物车为空，请添加商品！
+      </div>
+
+      <!-- 商品列表 -->
+      <div v-else class="cart-items">
+        <div
+            v-for="item in cartItems"
+            :key="item.cartItemId"
+            class="cart-item"
+        >
+          <img :src="item.cover" alt="商品封面" class="cart-item-image" />
+
+          <div class="cart-item-info">
+            <h3>{{ item.title }}</h3>
+
+            <p class="price">单价：{{ item.price }} 元</p>
+
+            <div class="quantity-row">
+              数量：
+              <el-input-number
+                  v-model="item.quantity"
+                  :min="1"
+                  size="small"
+                  @change="(value)=>handleChangeQuantity(item.cartItemId,value)"
+              />
+            </div>
+          </div>
+
+          <el-button
+              type="danger"
+              size="small"
+              @click="handleDeleteCartItem(item.cartItemId)"
+              class="delete-btn"
+          >
+            删除
+          </el-button>
         </div>
-        <button @click="handleDeleteCartItem(item.cartItemId)" class="delete-btn">删除</button>
+      </div>
+
+      <!-- 总金额 -->
+      <div v-if="cartItems.length > 0" class="total-amount">
+        总金额：<span class="amount">{{ totalAmount }} 元</span>
+      </div>
+
+      <!-- 提交订单按钮 -->
+      <div class="submit-order">
+        <el-button type="primary" size="large" @click="handleSubmitOrder">
+          提交订单
+        </el-button>
       </div>
     </div>
-    <div v-if="cartItems.length > 0" class="total-amount">
-      总金额：{{ totalAmount }} 元
 
-    </div>
+    <!-- 填写订单弹窗 -->
+    <el-dialog v-model="isDialogVisible" title="填写订单信息" width="55%">
+      <el-form label-width="110px" class="dialog-form">
 
-  </div>
-  <el-button type="primary" @click="handleSubmitOrder">提交订单</el-button>
-  <!-- 弹窗 -->
-  <el-dialog v-model="isDialogVisible" title="填写订单信息" width="60%">
-    <el-form label-width="100px">
-      <el-form-item label="收货人姓名">
-        <el-input v-model="shippingAddress.name" placeholder="请输入收货人姓名"></el-input>
-      </el-form-item>
-      <el-form-item label="联系电话">
-        <el-input v-model="shippingAddress.phone" placeholder="请输入联系电话"></el-input>
-      </el-form-item>
-      <el-form-item label="邮政编码">
-        <el-input v-model="shippingAddress.postalCode" placeholder="请输入邮政编码"></el-input>
-      </el-form-item>
-      <el-form-item label="详细地址">
-        <el-input v-model="shippingAddress.address" placeholder="请输入详细地址"></el-input>
-      </el-form-item>
-      <el-form-item label="支付方式">
-        <el-select v-model="paymentMethod" placeholder="请选择支付方式">
-          <el-option label="ALIPAY" value="ALIPAY"></el-option>
-        </el-select>
-      </el-form-item>
-    </el-form>
-    <template #footer>
-      <span class="dialog-footer">
-        <el-button @click="isDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="confirmSubmitOrder">确认提交</el-button>
-      </span>
-    </template>
-  </el-dialog>
+        <el-form-item label="收货人姓名">
+          <el-input v-model="shippingAddress.name"></el-input>
+        </el-form-item>
 
-  <el-dialog v-model="checkOrderMsg" title="确认订单信息" width="60%">
-    <el-form label-width="100px">
-      <el-form-item label="收货人姓名">
-        <strong>{{shippingAddress.name}}</strong>
-      </el-form-item>
-      <el-form-item label="联系电话">
-        <strong>{{shippingAddress.phone}}</strong>
-      </el-form-item>
-      <el-form-item label="邮政编码">
-        <strong>{{shippingAddress.postalCode}}</strong>
-      </el-form-item>
-      <el-form-item label="详细地址">
-        <strong>{{shippingAddress.address}}</strong>
-      </el-form-item>
-      <el-form-item label="商品总金额">
-        <strong>{{ orderTotalAmount.toFixed(2) }} 元</strong>
-      </el-form-item>
-      <h3>商品明细</h3>
-      <el-table :data="orderItems" style="width: 100%">
-        <el-table-column prop="title" label="商品名称" width="200" />
-        <el-table-column prop="price" label="单价（元）" width="120">
-          <template #default="scope">
-            {{ scope.row.price.toFixed(2) }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="quantity" label="数量" width="80" />
-        <el-table-column prop="total" label="总价（元）" width="120">
-          <template #default="scope">
-            {{ scope.row.total.toFixed(2) }}
-          </template>
-        </el-table-column>
-      </el-table>
-    </el-form>
-    <template #footer>
-      <span class="dialog-footer">
-        <el-button @click="handleCancelOrder">取消订单</el-button>
-        <el-button type="primary" @click="toOrderPage(currentOrderId)">确认并支付</el-button>
-      </span>
-    </template>
-  </el-dialog>
+        <el-form-item label="联系电话">
+          <el-input v-model="shippingAddress.phone"></el-input>
+        </el-form-item>
+
+        <el-form-item label="邮政编码">
+          <el-input v-model="shippingAddress.postalCode"></el-input>
+        </el-form-item>
+
+        <el-form-item label="详细地址">
+          <el-input v-model="shippingAddress.address"></el-input>
+        </el-form-item>
+
+        <el-form-item label="支付方式">
+          <el-select v-model="paymentMethod">
+            <el-option label="支付宝" value="ALIPAY" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="isDialogVisible = false">取消</el-button>
+          <el-button type="primary" @click="confirmSubmitOrder">确认提交</el-button>
+        </div>
+      </template>
+    </el-dialog>
+
+    <!-- 确认订单弹窗 -->
+    <el-dialog v-model="checkOrderMsg" title="确认订单信息" width="55%">
+      <el-form label-width="110px">
+
+        <el-form-item label="收货人姓名"><strong>{{ shippingAddress.name }}</strong></el-form-item>
+        <el-form-item label="联系电话"><strong>{{ shippingAddress.phone }}</strong></el-form-item>
+        <el-form-item label="邮政编码"><strong>{{ shippingAddress.postalCode }}</strong></el-form-item>
+        <el-form-item label="详细地址"><strong>{{ shippingAddress.address }}</strong></el-form-item>
+
+        <el-form-item label="订单金额">
+          <strong class="confirm-price">{{ orderTotalAmount.toFixed(2) }} 元</strong>
+        </el-form-item>
+
+        <h3>商品明细</h3>
+
+        <el-table :data="orderItems">
+          <el-table-column prop="title" label="商品名称" width="200" />
+          <el-table-column prop="price" label="单价（元）" />
+          <el-table-column prop="quantity" label="数量" width="80" />
+          <el-table-column prop="total" label="总价（元）" />
+        </el-table>
+      </el-form>
+
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="handleCancelOrder">取消订单</el-button>
+          <el-button type="primary" @click="toOrderPage(currentOrderId)">确认并支付</el-button>
+        </div>
+      </template>
+    </el-dialog>
+
   </el-main>
 </template>
 
@@ -270,106 +296,116 @@ onMounted(() => {
 
 .background {
   display: flex;
-  justify-content: center;
-  align-items: flex-start;
+  flex-direction: column;
+  align-items: center;
   background-image: url("../../assets/book1.jpg");
   background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-  padding: 60px 20px;
+  padding: 40px 20px;
   min-height: 100vh;
+  position: relative;
 }
 
+.back-button {
+  position: absolute;
+  top: 30px;
+  left: 30px;
+  backdrop-filter: blur(6px);
+  padding: 8px 16px;
+  font-size: 14px;
+  color: #666;
+  transition: all 0.3s;
+}
+
+.back-button:hover {
+  color: #409eff;
+  background: rgba(64, 158, 255, 0.1);
+}
+
+/* 购物车容器 */
 .cart-container {
-  backdrop-filter: blur(10px);
   width: 100%;
-  max-width: 800px;
-  background-color: rgba(255, 255, 255, 0.95);
-  border-radius: 16px;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+  max-width: 850px;
+  background: rgba(255, 255, 255, 0.92);
   padding: 30px;
-  margin-bottom: 40px;
+  border-radius: 18px;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.15);
 }
 
-.empty-cart {
+.cart-title {
+  margin-bottom: 20px;
   text-align: center;
-  color: #999;
-  font-size: 16px;
-  padding: 40px;
-  border: 2px dashed #ddd;
-  border-radius: 10px;
 }
 
-/* 商品列表 */
-.cart-items {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  margin-top: 20px;
-}
-
+/* 商品项 */
 .cart-item {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  background-color: #f9f9f9;
   padding: 15px;
-  border-radius: 10px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+  background: #fafafa;
+  border-radius: 12px;
+  gap: 15px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.05);
 }
 
 .cart-item-image {
-  width: 100px;
-  height: 100px;
+  width: 90px;
+  height: 90px;
   object-fit: cover;
-  border-radius: 8px;
+  border-radius: 10px;
 }
 
 .cart-item-info {
   flex: 1;
-  margin-left: 15px;
 }
 
-.cart-item-info h3 {
-  margin: 0 0 10px 0;
+.price {
+  color: #333;
+  margin-bottom: 6px;
+}
+
+.quantity-row {
+  margin-top: 4px;
+}
+
+/* 删除按钮 */
+.delete-btn {
+  min-width: 70px;
+}
+
+/* 总金额 */
+.total-amount {
+  margin-top: 25px;
+  font-size: 20px;
+  text-align: right;
+}
+
+.amount {
+  font-weight: bold;
+  color: #409eff;
+}
+
+/* 提交订单按钮 */
+.submit-order {
+  margin-top: 25px;
+  text-align: center;
+}
+
+/* 弹窗表单 */
+.dialog-form .el-form-item {
+  margin-bottom: 16px;
+}
+
+/* 弹窗底部按钮对齐 */
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+/* 确认金额更突出 */
+.confirm-price {
+  color: #f56c6c;
   font-size: 18px;
 }
-
-.cart-item-info p {
-  margin: 5px 0;
-  font-size: 14px;
-  color: #555;
-}
-
-input[type="number"] {
-  width: 60px;
-  padding: 5px;
-  font-size: 14px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-}
-
-.delete-btn {
-  background-color: #ff4d4f;
-  color: white;
-  border: none;
-  padding: 8px 12px;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background-color 0.3s ease;
-}
-
-.delete-btn:hover {
-  background-color: #e63946;
-}
-
-.total-amount {
-  margin-top: 20px;
-  font-size: 20px;
-  font-weight: bold;
-  text-align: right;
-  color: #333;
-}
-
 
 </style>
