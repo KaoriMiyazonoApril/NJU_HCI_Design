@@ -62,7 +62,7 @@ const handleDelete = (id: number) => {
 <style scoped>
 .product-card {
   position: relative;
-  width: 280px;
+  width: 100%;
   transition: all 0.3s;
   cursor: pointer;
   background-color: transparent; /* 主卡片本身透明 */
@@ -73,6 +73,22 @@ const handleDelete = (id: number) => {
   top: 10px;
   right: 10px;
   z-index: 10;
+}
+
+.book-cover-container {
+  width: 100%;
+  height: 320px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f0f0f0;
+}
+
+.book-cover-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .product-image {
