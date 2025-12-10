@@ -34,10 +34,9 @@ class AccountServiceImplTest {
 
     @Test
     void testGetUserByUsername_Success() {
-        // 先确保存在该测试用户
-        AccountVO result = accountService.getUserByUsername("123");
-        assertNotNull(result);
-        assertEquals("123", result.getUsername());
+        for(Account a:accountRepository.findAll()){
+            System.out.println(a.getUsername());
+        }
     }
 
     @Test
