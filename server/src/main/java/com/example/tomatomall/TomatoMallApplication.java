@@ -6,7 +6,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 
 @SpringBootApplication
 @EnableScheduling
-public class TomatoMallApplication {
+public class  TomatoMallApplication {
 
     public static void main(String[] args) {
         SpringApplication.run(TomatoMallApplication.class, args);

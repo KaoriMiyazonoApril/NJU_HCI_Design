@@ -2,7 +2,15 @@
 import { onMounted, ref, computed, watch } from "vue"
 import { useRouter } from 'vue-router'
 import ProductCard from "../../components/ProductCard.vue"
-import { Back, Search as SearchIcon, Plus, User, SwitchButton } from "@element-plus/icons-vue"
+import {
+  Search as SearchIcon,
+  Plus,
+  User,
+  SwitchButton,
+  ShoppingCart,
+  Filter,
+  Refresh
+} from "@element-plus/icons-vue"
 import { getAllProducts } from "../../api/products"
 import productApi from "../../api/products"
 import { getAllAdvertisements } from "../../api/advertisements.ts"
@@ -28,6 +36,7 @@ const username = sessionStorage.getItem("username")
 const products = ref<Product[]>([])
 const advertisements = ref<any[]>([])
 const isLoading = ref(false)
+const isFilterExpanded = ref(false)
 
 // ============ 用户操作 ============
 const navigateToDashboard = () => {
@@ -36,25 +45,32 @@ const navigateToDashboard = () => {
 
 const logout = () => {
   ElMessageBox.confirm(
-      '是否要退出登录？',
-      '提示',
+      '确定要退出登录吗？',
+      '确认退出',
       {
-        confirmButtonText: '是',
-        cancelButtonText: '否',
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
         type: "warning",
         showClose: false,
         roundButton: true,
-        center: true
+        center: true,
+        customClass: 'logout-confirm-dialog'
       }
   ).then(() => {
-    sessionStorage.setItem('token', '')
-    router.push({path: "/login"})
+    sessionStorage.clear()
+    ElMessage.success('已成功退出登录')
+    setTimeout(() => {
+      router.push({path: "/login"})
+    }, 500)
+  }).catch(() => {
+    // 取消操作
   })
 }
 
 // ============ 搜索和筛选 ============
 const searchQuery = ref('')
 const selectedCategory = ref('')
+const sortBy = ref('newest') // newest, price-low, price-high
 const categories = [
   '玄幻', '科幻', '奇幻', '冒险', '都市言情',
   '科普', '军事', '哲学', '物理', '生物',
@@ -65,18 +81,14 @@ const categories = [
 let searchTimeout: ReturnType<typeof setTimeout> | null = null
 
 // 监听搜索框变化，实时搜索
-watch(searchQuery, async (newQuery) => {
-  // 清除之前的计时器
+watch([searchQuery, selectedCategory, sortBy], async () => {
   if (searchTimeout) {
     clearTimeout(searchTimeout)
   }
-  // 设置新的防抖计时器，延迟300ms执行搜索
   searchTimeout = setTimeout(async () => {
-    // 如果搜索和分类都为空，显示所有商品
-    if (!newQuery.trim() && !selectedCategory.value) {
+    if (!searchQuery.value.trim() && !selectedCategory.value) {
       await fetchAllData()
     } else {
-      // 否则执行搜索
       await performSearch()
     }
   }, 300)
@@ -93,6 +105,7 @@ const fetchAllData = async () => {
     products.value = productsRes.data.data || []
     advertisements.value = adsRes.data.data || []
     currentPage.value = 1
+    applySorting()
   } catch (err) {
     ElMessage.error('获取数据失败，请刷新重试')
     console.error(err)
@@ -103,7 +116,7 @@ const fetchAllData = async () => {
 
 const performSearch = async () => {
   const keyword = searchQuery.value.trim()
-  
+
   if (!keyword && !selectedCategory.value) {
     await fetchAllData()
     return
@@ -116,8 +129,8 @@ const performSearch = async () => {
       res = await getProductsByCategory(selectedCategory.value)
       if (keyword) {
         res.data.data = res.data.data.filter((product: Product) => (
-          product.title?.toLowerCase().includes(keyword.toLowerCase()) ||
-          product.description?.toLowerCase().includes(keyword.toLowerCase())
+            product.title?.toLowerCase().includes(keyword.toLowerCase()) ||
+            product.description?.toLowerCase().includes(keyword.toLowerCase())
         ))
       }
     } else {
@@ -125,13 +138,25 @@ const performSearch = async () => {
     }
     products.value = res.data.data || []
     currentPage.value = 1
-    // 搜索成功时弹出提示
+    applySorting()
     ElMessage.success(`找到 ${products.value.length} 件商品`)
   } catch (err) {
     console.error('搜索失败:', err)
     ElMessage.error("搜索失败，请重试")
   } finally {
     isLoading.value = false
+  }
+}
+
+// 应用排序
+const applySorting = () => {
+  if (sortBy.value === 'newest') {
+    // 按 id 从大到小排序，id 越大表示越新
+    products.value.sort((a, b) => b.id - a.id)
+  } else if (sortBy.value === 'price-low') {
+    products.value.sort((a, b) => a.price - b.price)
+  } else if (sortBy.value === 'price-high') {
+    products.value.sort((a, b) => b.price - a.price)
   }
 }
 
@@ -151,10 +176,19 @@ const handleCategoryChange = async () => {
   await performSearch()
 }
 
+const handleSortChange = () => {
+  applySorting()
+}
+
 const handleClearFilters = async () => {
   searchQuery.value = ''
   selectedCategory.value = ''
+  sortBy.value = 'newest'
   await fetchAllData()
+}
+
+const toggleFilterPanel = () => {
+  isFilterExpanded.value = !isFilterExpanded.value
 }
 
 // ============ 导航 ============
@@ -164,10 +198,6 @@ const toCreateProductPage = () => {
 
 const toProductDetailPage = (productId: number) => {
   router.push(`/home/products/${productId}`)
-}
-
-const toBackPage = () => {
-  router.back()
 }
 
 const toCartPage = () => {
@@ -190,430 +220,680 @@ const navigateToProduct = (productId: number) => {
 onMounted(() => {
   fetchAllData()
 })
-
-
 </script>
 
 <template>
-  <el-main class="product-main">
+  <div class="product-center">
     <!-- 头部导航栏 -->
-    <div class="header-bar">
-      <!-- 第一行：标题、版本标签、用户、退出和操作按钮 -->
-      <div class="header-top">
-        <div class="header-left-space"></div>
-        <div class="header-title">
-          <h1 class="page-title">商品中心</h1>
+    <header class="main-header">
+      <div class="header-container">
+        <!-- Logo和标题 -->
+        <div class="brand-section">
+          <div class="logo-wrapper">
+            <div class="logo-icon">📚</div>
+            <h1 class="brand-name">书海商城</h1>
+          </div>
+          <div class="title-wrapper">
+            <h2 class="page-title">商品中心</h2>
+            <el-tag class="role-tag">{{ parseRole(role) }}版</el-tag>
+          </div>
         </div>
-        <div class="header-right-top">
-          <el-tag class="role-tag">{{ parseRole(role) }}版</el-tag>
-          <div class="action-buttons-group">
-            <el-button type="primary" @click="toCartPage" :icon="SearchIcon" class="header-action-btn">
-              购物车
+
+        <!-- 用户操作区 -->
+        <div class="user-section">
+          <div class="user-info">
+            <el-avatar :size="36" class="user-avatar">
+              {{ username?.charAt(0).toUpperCase() }}
+            </el-avatar>
+            <span class="username">{{ username }}</span>
+          </div>
+
+          <div class="action-buttons">
+            <el-button
+                type="primary"
+                @click="toCartPage"
+                :icon="ShoppingCart"
+                class="action-btn cart-btn"
+                circle
+                size="large"
+            />
+
+            <el-button
+                v-if="role === 'MANAGER'"
+                type="success"
+                @click="toCreateProductPage"
+                :icon="Plus"
+                class="action-btn create-btn"
+                circle
+                size="large"
+            />
+
+            <el-button
+                v-if="role === 'MANAGER'"
+                type="warning"
+                @click="toAllAdvertisementsPage"
+                class="action-btn ad-btn"
+                circle
+                size="large"
+            >
+              AD
             </el-button>
-            <el-button v-if="role === 'MANAGER'" type="success" @click="toCreateProductPage" :icon="Plus" class="header-action-btn">
-              新建商品
-            </el-button>
-            <el-button v-if="role === 'MANAGER'" type="warning" @click="toAllAdvertisementsPage" plain class="header-action-btn">
-              广告管理
-            </el-button>
-            <el-icon @click="navigateToDashboard" :size="28" class="header-icon-btn"><User /></el-icon>
-            <el-icon @click="logout" :size="28" class="header-icon-btn"><SwitchButton /></el-icon>
+
+            <el-button
+                @click="navigateToDashboard"
+                :icon="User"
+                class="action-btn profile-btn"
+                circle
+                size="large"
+            />
+
+            <el-button
+                @click="logout"
+                :icon="SwitchButton"
+                class="action-btn logout-btn"
+                circle
+                size="large"
+            />
           </div>
         </div>
       </div>
 
-      <!-- 第二行：搜索和筛选 -->
-      <div class="header-center">
-        <div class="filter-row">
+      <!-- 搜索和筛选栏 -->
+      <div class="search-section">
+        <div class="search-container">
           <el-input
-            v-model="searchQuery"
-            placeholder="搜索商品名称或描述..."
-            prefix-icon="Search"
-            clearable
-            class="search-input"
+              v-model="searchQuery"
+              placeholder="搜索商品名称或描述..."
+              :prefix-icon="SearchIcon"
+              clearable
+              size="large"
+              class="search-input"
           />
-          <el-select
-            v-model="selectedCategory"
-            placeholder="按分类筛选"
-            @change="handleCategoryChange"
-            clearable
-            class="category-select"
-          >
-            <el-option
-              v-for="category in categories"
-              :key="category"
-              :label="category"
-              :value="category"
-            />
-          </el-select>
-          <el-button @click="handleClearFilters" type="info" plain v-if="searchQuery || selectedCategory" class="clear-btn">
-            清除筛选
-          </el-button>
+
+          <el-button
+              @click="toggleFilterPanel"
+              :icon="Filter"
+              class="filter-toggle-btn"
+              :type="isFilterExpanded ? 'primary' : 'default'"
+              circle
+              size="large"
+          />
+
+          <el-button
+              @click="handleClearFilters"
+              :icon="Refresh"
+              v-if="searchQuery || selectedCategory"
+              class="clear-btn"
+              circle
+              size="large"
+          />
+        </div>
+
+        <!-- 扩展筛选面板 -->
+        <div v-if="isFilterExpanded" class="filter-panel">
+          <div class="filter-content">
+            <div class="filter-group">
+              <span class="filter-label">分类筛选</span>
+              <el-select
+                  v-model="selectedCategory"
+                  placeholder="全部分类"
+                  @change="handleCategoryChange"
+                  clearable
+                  size="large"
+                  class="category-select"
+              >
+                <el-option
+                    v-for="category in categories"
+                    :key="category"
+                    :label="category"
+                    :value="category"
+                />
+              </el-select>
+            </div>
+
+            <div class="filter-group">
+              <span class="filter-label">排序方式</span>
+              <el-radio-group v-model="sortBy" @change="handleSortChange" size="large">
+                <el-radio-button label="newest">最新上架</el-radio-button>
+                <el-radio-button label="price-low">价格从低到高</el-radio-button>
+                <el-radio-button label="price-high">价格从高到低</el-radio-button>
+              </el-radio-group>
+            </div>
+          </div>
         </div>
       </div>
-    </div>
+    </header>
 
-    <!-- 广告轮播区 -->
-    <div v-if="advertisements.length > 0" class="carousel-section">
-      <el-carousel :interval="5000" arrow="always" height="400px" autoplay>
-        <el-carousel-item v-for="ad in advertisements" :key="ad.id">
-          <img
-            :src="ad.imgUrl"
-            alt="广告"
-            class="carousel-image"
-            @click="navigateToProduct(ad.productId)"
+    <!-- 主内容区 -->
+    <main class="main-content">
+      <!-- 广告轮播区 -->
+      <div v-if="advertisements.length > 0" class="ad-carousel-section">
+        <div class="section-header">
+          <h3 class="section-title">热门推荐</h3>
+          <span class="section-subtitle">发现精选好书</span>
+        </div>
+        <el-carousel
+            :interval="5000"
+            arrow="always"
+            height="400px"
+            autoplay
+            trigger="click"
+            class="ad-carousel"
+        >
+          <el-carousel-item v-for="ad in advertisements" :key="ad.id">
+            <div class="carousel-item">
+              <img
+                  :src="ad.imgUrl"
+                  :alt="ad.title || '广告'"
+                  class="carousel-image"
+                  @click="navigateToProduct(ad.productId)"
+              />
+              <div v-if="ad.title" class="carousel-caption">
+                <h4>{{ ad.title }}</h4>
+                <p v-if="ad.description">{{ ad.description }}</p>
+              </div>
+            </div>
+          </el-carousel-item>
+        </el-carousel>
+      </div>
+
+      <!-- 商品展示区 -->
+      <div class="products-section">
+        <div class="section-header">
+          <h3 class="section-title">
+            全部商品
+            <span class="product-count">(共 {{ products.length }} 件)</span>
+          </h3>
+
+          <div class="view-controls">
+            <span class="showing-text">
+              显示 {{ Math.min((currentPage - 1) * pageSize + 1, products.length) }}-{{ Math.min(currentPage * pageSize, products.length) }} 件
+            </span>
+          </div>
+        </div>
+
+        <!-- 加载状态 -->
+        <div v-if="isLoading" class="loading-state">
+          <div class="skeleton-grid">
+            <div v-for="i in 6" :key="i" class="product-skeleton">
+              <div class="skeleton-image"></div>
+              <div class="skeleton-info">
+                <div class="skeleton-title"></div>
+                <div class="skeleton-price"></div>
+                <div class="skeleton-button"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 空状态 -->
+        <div v-else-if="products.length === 0" class="empty-state">
+          <div class="empty-illustration">
+            <div class="empty-icon">📦</div>
+            <h3>未找到相关商品</h3>
+            <p>尝试调整搜索词或筛选条件</p>
+            <el-button
+                type="primary"
+                @click="handleClearFilters"
+                :icon="Refresh"
+                size="large"
+                class="empty-action-btn"
+            >
+              查看全部商品
+            </el-button>
+          </div>
+        </div>
+
+        <!-- 商品网格 -->
+        <div v-else class="product-grid">
+          <ProductCard
+              v-for="product in paginatedProducts"
+              :key="product.id"
+              :product="product"
+              @delete="handleProductDelete"
+              @click="toProductDetailPage(product.id)"
+              class="product-card-item"
           />
-        </el-carousel-item>
-      </el-carousel>
-    </div>
+        </div>
 
-    <!-- 加载状态 -->
-    <div v-if="isLoading" class="loading-container">
-      <el-skeleton :count="6" animated />
-    </div>
-
-    <!-- 空状态 -->
-    <div v-else-if="products.length === 0" class="empty-state">
-      <div class="empty-icon">📦</div>
-      <p class="empty-text">未找到相关商品</p>
-      <el-button type="primary" link @click="handleClearFilters">
-        清除筛选条件，查看全部商品
-      </el-button>
-    </div>
-
-    <!-- 商品网格 -->
-    <div v-else class="products-section">
-      <div class="product-grid">
-        <ProductCard
-          v-for="product in paginatedProducts"
-          :key="product.id"
-          :product="product"
-          @delete="handleProductDelete"
-          @click="toProductDetailPage(product.id)"
-        />
+        <!-- 分页器 -->
+        <div v-if="products.length > pageSize" class="pagination-section">
+          <el-pagination
+              v-model:current-page="currentPage"
+              :page-size="pageSize"
+              :total="products.length"
+              :pager-count="5"
+              layout="total, prev, pager, next, jumper"
+              @current-change="handleCurrentChange"
+              background
+              class="custom-pagination"
+          />
+        </div>
       </div>
+    </main>
 
-      <!-- 分页器 -->
-      <div class="pagination-wrapper">
-        <el-pagination
-          v-model:current-page="currentPage"
-          :page-size="pageSize"
-          :total="products.length"
-          layout="total, prev, pager, next, jumper"
-          @current-change="handleCurrentChange"
-          background
+    <!-- 回到顶部按钮 -->
+    <el-backtop :right="30" :bottom="30" class="back-to-top" />
+
+    <!-- 悬浮购物车按钮 -->
+    <div class="floating-cart-btn" @click="toCartPage">
+      <el-badge :value="0" :max="99" class="cart-badge">
+        <el-button
+            type="primary"
+            :icon="ShoppingCart"
+            circle
+            size="large"
+            class="cart-float-btn"
         />
-      </div>
+      </el-badge>
+      <span class="cart-label">购物车</span>
     </div>
-
-    <!-- 浮动购物车按钮 -->
-    <div class="floating-action" @click="toCartPage">
-      <span class="action-icon">🛒</span>
-      <span class="action-text">购物车</span>
-    </div>
-  </el-main>
+  </div>
 </template>
 
 <style scoped>
-/* ============ 全局 ============ */
-.product-main {
-  background: #0a0e27;
+/* ============ 全局样式 ============ */
+.product-center {
   min-height: 100vh;
-  padding: 0;
-  font-family: 'Poppins', 'Inter', sans-serif;
-  position: relative;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
-.product-main::before {
-  content: '';
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: 
-    repeating-linear-gradient(
-      90deg,
-      transparent,
-      transparent 2px,
-      rgba(214, 40, 40, 0.02) 2px,
-      rgba(214, 40, 40, 0.02) 4px
-    );
-  pointer-events: none;
-  z-index: 0;
-}
-
-/* ============ 头部导航栏 ============ */
-.header-bar {
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-start;
-  align-items: center;
-  background: linear-gradient(135deg, #6b5b95 0%, #8b5fb5 100%);
+/* ============ 头部样式 ============ */
+.main-header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
-  padding: 12px 40px;
-  box-shadow: 0 0 0 2px #d4af37, 0 12px 40px rgba(107, 91, 149, 0.4);
+  padding: 16px 0;
+  box-shadow: 0 4px 20px rgba(102, 126, 234, 0.15);
   position: sticky;
   top: 0;
   z-index: 100;
-  border-bottom: 4px solid #d4af37;
-  animation: slide-in-right 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
-  border-left: 5px solid #d4af37;
-  border-right: 5px solid #d4af37;
+  backdrop-filter: blur(10px);
+}
+
+.header-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 32px;
+}
+
+/* 品牌区域 */
+.brand-section {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-shrink: 0;
+}
+
+.logo-wrapper {
+  display: flex;
+  align-items: center;
   gap: 12px;
 }
 
-.header-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  gap: 20px;
-}
-
-.header-left-space {
-  flex: 1;
-  min-width: 100px;
-}
-
-.header-title {
+.logo-icon {
+  font-size: 32px;
+  background: rgba(255, 255, 255, 0.1);
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  backdrop-filter: blur(10px);
+  border: 2px solid rgba(255, 255, 255, 0.2);
 }
 
-.header-right-top {
-  flex: 1;
+.brand-name {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0;
+  letter-spacing: -0.5px;
+  background: linear-gradient(135deg, #fff 0%, #e2e8f0 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.title-wrapper {
   display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 20px;
-}
-
-.role-tag {
-  font-size: 12px;
-  background-color: rgba(255, 255, 255, 0.2);
-  color: white;
-  border: 2px solid white;
-  font-weight: 600;
-  padding: 4px 8px;
-  white-space: nowrap;
-}
-
-.action-buttons-group {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.header-action-btn {
-  font-size: 12px;
-  padding: 6px 12px !important;
-  height: auto;
-}
-
-.header-icon-btn {
-  cursor: pointer;
-  transition: transform 0.3s ease, color 0.3s ease;
-  color: white;
-  margin-left: 8px;
-}
-
-.header-icon-btn:first-of-type {
-  margin-left: 0;
-}
-
-.header-icon-btn:hover {
-  transform: scale(1.15);
-  color: #ffcc00;
-}
-
-.header-bar > div:nth-child(2),
-.header-bar > div:nth-child(3) {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-  width: 100%;
-  justify-content: space-between;
-}
-
-.header-center {
-  flex: 1;
-  text-align: center;
-  display: flex;
-  flex-direction: column;
   align-items: center;
   gap: 12px;
 }
 
 .page-title {
-  font-family: 'Playfair Display', serif;
-  font-size: 24px;
-  font-weight: 900;
+  font-size: 18px;
+  font-weight: 600;
   margin: 0;
-  color: white;
-  text-transform: uppercase;
-  letter-spacing: 2px;
-  text-shadow: 2px 2px 6px rgba(0, 0, 0, 0.5);
+  opacity: 0.95;
 }
 
-.header-bar :deep(.el-button--primary) {
-  background-color: transparent;
-  border-color: transparent;
+.role-tag {
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.3);
   color: white;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 20px;
+  backdrop-filter: blur(10px);
+}
+
+/* 用户区域 */
+.user-section {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.user-avatar {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  font-weight: 600;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.username {
+  font-weight: 500;
+  font-size: 14px;
+  opacity: 0.95;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.action-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
+  transition: all 0.3s ease;
+}
+
+.action-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.cart-btn:hover {
+  background: rgba(59, 130, 246, 0.3);
+}
+
+.create-btn:hover {
+  background: rgba(34, 197, 94, 0.3);
+}
+
+.ad-btn {
   font-weight: 700;
-  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-.header-bar :deep(.el-button--primary:hover) {
-  background-color: rgba(212, 175, 55, 0.3);
-  color: white;
-  border-color: #d4af37;
-  transform: scale(1.05);
-  box-shadow: 0 4px 15px rgba(212, 175, 55, 0.3);
-  animation: elastic-bounce 0.5s ease-out;
+.ad-btn:hover {
+  background: rgba(245, 158, 11, 0.3);
 }
 
-.header-bar :deep(.el-button--success) {
-  background-color: transparent;
-  border-color: transparent;
-  color: white;
-  font-weight: 700;
-  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+.profile-btn:hover {
+  background: rgba(139, 92, 246, 0.3);
 }
 
-.header-bar :deep(.el-button--success:hover) {
-  background-color: rgba(0, 208, 132, 0.3);
-  border-color: #00d084;
-  color: white;
-  transform: scale(1.05);
-  box-shadow: 0 4px 15px rgba(0, 208, 132, 0.3);
-  animation: elastic-bounce 0.5s ease-out;
+.logout-btn:hover {
+  background: rgba(239, 68, 68, 0.3);
 }
 
-.header-bar :deep(.el-button--warning) {
-  background-color: transparent;
-  border-color: transparent;
-  color: white;
-  font-weight: 700;
-  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+/* 搜索区域 */
+.search-section {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  margin-top: 16px;
 }
 
-.header-bar :deep(.el-button--warning:hover) {
-  background-color: rgba(212, 175, 55, 0.3);
-  border-color: #d4af37;
-  color: white;
-  transform: scale(1.05);
-  box-shadow: 0 4px 15px rgba(212, 175, 55, 0.3);
-  animation: elastic-bounce 0.5s ease-out;
-}
-
-/* ============ 轮播区 ============ */
-.carousel-section {
+.search-container {
   max-width: 1200px;
-  margin: 40px auto;
-  border-radius: 0;
-  overflow: hidden;
-  box-shadow: 0 0 0 3px #ffcc00, 0 12px 40px rgba(0, 0, 0, 0.3);
-  animation: expand-grow 0.7s cubic-bezier(0.34, 1.56, 0.64, 1);
-  position: relative;
+  margin: 0 auto;
+  padding: 16px 24px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.search-input {
+  flex: 1;
+  max-width: 600px;
+}
+
+.search-input :deep(.el-input__wrapper) {
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 12px;
+  padding: 0 16px;
+  transition: all 0.3s ease;
+}
+
+.search-input :deep(.el-input__wrapper:hover),
+.search-input :deep(.el-input__wrapper.is-focus) {
   background: white;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.filter-toggle-btn,
+.clear-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+.filter-toggle-btn:hover,
+.clear-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* 筛选面板 */
+.filter-panel {
+  background: rgba(255, 255, 255, 0.95);
+  border-top: 1px solid #e2e8f0;
+  animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.filter-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px 24px;
+  display: flex;
+  gap: 40px;
+  align-items: center;
+}
+
+.filter-group {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.filter-label {
+  font-size: 14px;
+  color: #64748b;
+  font-weight: 500;
+  min-width: 80px;
+}
+
+.category-select {
+  min-width: 200px;
+}
+
+/* ============ 主内容区 ============ */
+.main-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 32px 24px;
+}
+
+/* 分区标题 */
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.section-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.section-subtitle {
+  font-size: 14px;
+  color: #64748b;
+  margin-left: 12px;
+}
+
+.product-count {
+  font-size: 16px;
+  color: #64748b;
+  font-weight: 400;
+}
+
+.view-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.showing-text {
+  font-size: 14px;
+  color: #64748b;
+}
+
+/* 广告轮播区 */
+.ad-carousel-section {
+  margin-bottom: 48px;
+}
+
+.ad-carousel {
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+}
+
+.carousel-item {
+  position: relative;
+  width: 100%;
+  height: 100%;
 }
 
 .carousel-image {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  transition: transform 0.5s ease;
   cursor: pointer;
-  transition: transform 0.3s ease;
-  animation: pulse-glow 2s infinite;
 }
 
 .carousel-image:hover {
-  transform: scale(1.05);
-  animation: flash-shine 0.6s ease-in-out;
+  transform: scale(1.02);
 }
 
-/* ============ 筛选区 ============ */
-.filter-section {
-  max-width: 1200px;
-  margin: 40px auto;
-  padding: 30px;
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-  border-left: 5px solid #d62828;
-  border-top: 3px solid #ffcc00;
-  animation: expand-grow 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
-  font-family: 'Inter', 'Poppins', sans-serif;
+.carousel-caption {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.7));
+  color: white;
+  padding: 24px;
 }
 
-.filter-row {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 0;
-  flex-wrap: wrap;
-  width: 100%;
-}
-
-.search-input {
-  flex: 1;
-  min-width: 250px;
-  max-width: 350px;
-}
-
-.search-input :deep(.el-input__wrapper) {
-  background-color: rgba(255, 255, 255, 0.9);
-  border: 2px solid white;
-  border-radius: 4px;
-  transition: all 0.3s ease;
+.carousel-caption h4 {
+  margin: 0 0 8px 0;
+  font-size: 20px;
   font-weight: 600;
 }
 
-.search-input :deep(.el-input__wrapper:hover),
-.search-input :deep(.el-input__wrapper:focus-within) {
-  background-color: white;
-  border-color: #d4af37;
-  box-shadow: 0 0 0 2px rgba(212, 175, 55, 0.3);
+.carousel-caption p {
+  margin: 0;
+  font-size: 14px;
+  opacity: 0.9;
 }
 
-.category-select {
-  flex: 0 0 150px;
-  min-width: 150px;
+/* 加载状态 */
+.loading-state {
+  padding: 40px 0;
 }
 
-.category-select :deep(.el-input__wrapper) {
-  background-color: rgba(255, 255, 255, 0.9);
-  border: 2px solid white;
+.skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 24px;
+}
+
+.product-skeleton {
+  background: white;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.skeleton-image {
+  width: 100%;
+  height: 180px;
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: loading 1.5s infinite;
+}
+
+.skeleton-info {
+  padding: 16px;
+}
+
+.skeleton-title {
+  height: 20px;
+  background: #f0f0f0;
   border-radius: 4px;
-  transition: all 0.3s ease;
+  margin-bottom: 12px;
+  width: 70%;
 }
 
-.category-select :deep(.el-input__wrapper:hover),
-.category-select :deep(.el-input__wrapper--focused) {
-  background-color: white;
-  border-color: #d4af37;
-  box-shadow: 0 0 0 2px rgba(212, 175, 55, 0.3);
+.skeleton-price {
+  height: 16px;
+  background: #f0f0f0;
+  border-radius: 4px;
+  margin-bottom: 16px;
+  width: 40%;
 }
 
-.clear-btn {
-  min-width: 100px;
-}
-
-/* ============ 加载状态 ============ */
-.loading-container {
-  max-width: 1200px;
-  margin: 40px auto;
-  padding: 30px;
-}
-
-.loading-container :deep(.el-skeleton__item) {
-  height: 280px;
-  background: #e8e8e8;
-  animation: pulse-glow 1.5s ease-in-out infinite;
+.skeleton-button {
+  height: 36px;
+  background: #f0f0f0;
+  border-radius: 8px;
 }
 
 @keyframes loading {
@@ -625,244 +905,336 @@ onMounted(() => {
   }
 }
 
-/* ============ 空状态 ============ */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* 空状态 */
 .empty-state {
-  max-width: 1200px;
-  margin: 80px auto;
+  padding: 80px 0;
   text-align: center;
-  padding: 60px 30px;
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
-  border: 3px dashed #d62828;
+}
+
+.empty-illustration {
+  max-width: 400px;
+  margin: 0 auto;
 }
 
 .empty-icon {
-  font-size: 72px;
-  margin-bottom: 20px;
-  animation: pulse-glow 2s ease-in-out infinite;
+  font-size: 80px;
+  margin-bottom: 24px;
+  opacity: 0.3;
 }
 
-.empty-text {
-  font-size: 18px;
-  color: #666;
-  margin-bottom: 20px;
-  font-weight: 700;
+.empty-state h3 {
+  font-size: 24px;
+  color: #64748b;
+  margin: 0 0 8px 0;
+  font-weight: 600;
 }
 
-/* ============ 商品网格 ============ */
-.products-section {
-  max-width: 1200px;
-  margin: 40px auto;
-  padding: 30px;
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
-  border: 3px solid #ffcc00;
+.empty-state p {
+  color: #94a3b8;
+  margin: 0 0 24px 0;
+  font-size: 16px;
 }
 
+.empty-action-btn {
+  padding: 12px 32px;
+  border-radius: 12px;
+  font-weight: 600;
+}
+
+/* 商品网格 */
 .product-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 24px;
-  margin-bottom: 40px;
+  margin-bottom: 48px;
 }
 
-.product-grid > :deep(*) {
+.product-card-item {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
 
-/* ============ 分页 ============ */
-.pagination-wrapper {
+.product-card-item:hover {
+  transform: translateY(-4px);
+}
+
+/* 分页器 */
+.pagination-section {
+  padding: 24px 0;
+  border-top: 1px solid #e2e8f0;
+  margin-top: 24px;
+}
+
+.custom-pagination {
   display: flex;
   justify-content: center;
-  padding: 20px;
-  border-top: 3px solid #d62828;
 }
 
-.pagination-wrapper :deep(.el-pagination) {
-  --el-pagination-bg-color: transparent;
+.custom-pagination :deep(.el-pagination) {
+  --el-pagination-bg-color: white;
+  --el-pagination-button-bg-color: white;
+  --el-pagination-button-hover-color: #667eea;
+  --el-pagination-button-disabled-bg-color: #f8fafc;
 }
 
-.pagination-wrapper :deep(.el-pagination .btn-prev),
-.pagination-wrapper :deep(.el-pagination .btn-next),
-.pagination-wrapper :deep(.el-pagination .el-pager li) {
-  background-color: #1a1a2e;
-  border-color: #d62828;
-  border-radius: 6px;
-  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+.custom-pagination :deep(.el-pager li) {
+  border-radius: 8px;
+  margin: 0 4px;
+  border: 1px solid #e2e8f0;
+  transition: all 0.3s ease;
+}
+
+.custom-pagination :deep(.el-pager li:hover) {
+  border-color: #667eea;
+  color: #667eea;
+}
+
+.custom-pagination :deep(.el-pager li.active) {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-color: transparent;
   color: white;
-  font-weight: 700;
 }
 
-.pagination-wrapper :deep(.el-pagination .btn-prev:hover),
-.pagination-wrapper :deep(.el-pagination .btn-next:hover),
-.pagination-wrapper :deep(.el-pagination .el-pager li:hover) {
-  background-color: #d62828;
-  border-color: #ffcc00;
+.custom-pagination :deep(.btn-prev),
+.custom-pagination :deep(.btn-next) {
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.custom-pagination :deep(.btn-prev:hover),
+.custom-pagination :deep(.btn-next:hover) {
+  border-color: #667eea;
+  color: #667eea;
+}
+
+/* 回到顶部按钮 */
+.back-to-top {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
-  box-shadow: 0 4px 12px rgba(214, 40, 40, 0.4);
-  animation: elastic-bounce 0.3s ease-out;
+  border-radius: 50%;
+  width: 48px !important;
+  height: 48px !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+  transition: all 0.3s ease;
 }
 
-.pagination-wrapper :deep(.el-pagination .el-pager li.active) {
-  background-color: #ffcc00;
-  border-color: #ffcc00;
-  color: #1a1a2e;
-  font-weight: 700;
+.back-to-top:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
 }
 
-/* ============ 浮动按钮 ============ */
-.floating-action {
+/* 悬浮购物车按钮 */
+.floating-cart-btn {
   position: fixed;
-  bottom: 30px;
-  right: 30px;
-  width: 70px;
-  height: 70px;
-  background: #ffcc00;
-  color: #1a1a2e;
-  border-radius: 0;
+  right: 32px;
+  bottom: 32px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  box-shadow: 0 0 0 3px #d62828, 0 12px 32px rgba(214, 40, 40, 0.6);
-  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  gap: 8px;
   z-index: 99;
-  font-weight: 700;
-  border: 5px solid #1a1a2e;
-  animation: pulse-glow 2s ease-in-out infinite;
-  clip-path: polygon(0 0, 85% 0, 100% 15%, 100% 100%, 15% 100%, 0 85%);
+  cursor: pointer;
 }
 
-.floating-action:hover {
-  transform: scale(1.2) rotate(-8deg);
-  box-shadow: 0 16px 40px rgba(214, 40, 40, 0.7);
-  filter: brightness(1.15);
-  animation: elastic-bounce 0.4s ease-out;
+.cart-badge :deep(.el-badge__content) {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  border: 2px solid white;
+  font-weight: 600;
 }
 
-.action-icon {
-  font-size: 28px;
-  margin-bottom: 2px;
+.cart-float-btn {
+  width: 56px;
+  height: 56px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  box-shadow: 0 4px 20px rgba(102, 126, 234, 0.3);
+  transition: all 0.3s ease;
+  animation: float 3s ease-in-out infinite;
 }
 
-.action-text {
+.cart-float-btn:hover {
+  transform: scale(1.1) rotate(15deg);
+  box-shadow: 0 6px 24px rgba(102, 126, 234, 0.4);
+}
+
+.cart-label {
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  padding: 4px 12px;
+  border-radius: 20px;
   font-size: 12px;
+  font-weight: 500;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: all 0.3s ease;
+  pointer-events: none;
+  backdrop-filter: blur(10px);
+}
+
+.floating-cart-btn:hover .cart-label {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
 }
 
 /* ============ 响应式设计 ============ */
-@media (max-width: 1200px) {
-  .header-bar {
-    flex-wrap: wrap;
-    padding: 15px 20px;
-    gap: 10px;
+@media (max-width: 1024px) {
+  .header-container {
+    flex-direction: column;
+    gap: 16px;
+    align-items: stretch;
   }
 
-  .page-title {
-    font-size: 22px;
+  .brand-section {
+    justify-content: space-between;
+  }
+
+  .user-section {
+    justify-content: space-between;
+  }
+
+  .filter-content {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 24px;
+  }
+
+  .filter-group {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .filter-label {
+    min-width: auto;
+  }
+
+  .category-select {
     width: 100%;
-    order: 3;
-    margin-top: 10px;
+  }
+}
+
+@media (max-width: 768px) {
+  .header-container,
+  .search-container,
+  .filter-content,
+  .main-content {
+    padding-left: 16px;
+    padding-right: 16px;
   }
 
-  .filter-section {
-    margin: 20px 15px;
-    padding: 20px;
+  .brand-section {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .logo-wrapper {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .title-wrapper {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .user-section {
+    flex-direction: column;
+    gap: 16px;
+    align-items: stretch;
+  }
+
+  .user-info {
+    justify-content: center;
+  }
+
+  .action-buttons {
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .section-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .view-controls {
+    justify-content: center;
   }
 
   .product-grid {
     grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
     gap: 16px;
   }
+
+  .floating-cart-btn {
+    right: 16px;
+    bottom: 16px;
+  }
+
+  .cart-float-btn {
+    width: 48px;
+    height: 48px;
+  }
 }
 
-@media (max-width: 768px) {
-  .header-bar {
-    padding: 10px 15px;
+@media (max-width: 480px) {
+  .product-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
   }
 
-  .header-top {
-    flex-direction: column;
-    gap: 10px;
+  .logo-icon {
+    width: 40px;
+    height: 40px;
+    font-size: 24px;
   }
 
-  .header-top {
-    flex-direction: column;
-    gap: 10px;
-  }
-
-  .header-title {
-    width: 100%;
-  }
-
-  .header-right-top {
-    width: 100%;
-    justify-content: center;
-    flex-wrap: wrap;
-  }
-
-  .header-action-btn {
-    font-size: 11px;
-    padding: 4px 8px !important;
+  .brand-name {
+    font-size: 18px;
   }
 
   .page-title {
     font-size: 16px;
   }
 
-  .filter-row {
+  .section-title {
+    font-size: 20px;
+  }
+
+  .search-container {
     flex-direction: column;
+    align-items: stretch;
   }
 
   .search-input {
-    width: 100%;
     max-width: 100%;
-    min-width: unset;
   }
 
-  .category-select {
-    width: 100%;
-    flex: unset;
-    min-width: unset;
-  }
-
-  .product-grid {
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    gap: 12px;
-  }
-
-  .floating-action {
-    width: 60px;
-    height: 60px;
-    bottom: 20px;
-    right: 20px;
-  }
-
-  .action-icon {
-    font-size: 24px;
-  }
-
-  .action-text {
-    font-size: 10px;
-  }
-}
-
-@media (max-width: 480px) {
-  .product-grid {
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    gap: 12px;
-  }
-
-  .header-bar {
-    gap: 5px;
-  }
-
-  .header-bar :deep(.el-button) {
-    font-size: 12px;
-    padding: 6px 10px;
+  .filter-toggle-btn,
+  .clear-btn {
+    align-self: flex-end;
   }
 }
 </style>
-
-
